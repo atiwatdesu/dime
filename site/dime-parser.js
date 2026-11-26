@@ -40,12 +40,13 @@ export function parseDime(lines){
   const dmy=s=>{const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?ymd(+m[3],+m[2],+m[1]):''};
   const eff=full.match(/Effective\s*Date\s*(?:\S+\s*){0,6}?(\d{1,2}\/\d{1,2}\/\d{4})/i);
   const N='(\\d[\\d,]*(?:\\.\\d+)?)';
-  const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|REW)\\s+([A-Z][A-Z0-9.\\-]{0,9})\\s+(?:\\[[A-Z]+\\]\\s+)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}`,'g');
+  const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z0-9.\\-]{0,9})\\s+(?:\\[[A-Z]+\\]\\s+)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}`,'g');
   const out=[],seen=new Set();let m;
   while((m=re.exec(full))){
     const [,id,settle,tp,sym]=m,[q,up,gross,fee]=m.slice(5,9).map(x=>+x.replace(/,/g,''));
     if(seen.has(id)||!(q>0))continue;seen.add(id);
-    out.push({sym,type:tp==='SELL'?'sell':'buy',date:(eff&&dmy(eff[1]))||dmy(settle),qty:q,price:gross>0?+(gross/q).toFixed(6):up,fee,ref:'DIME-'+id,note:tp==='REW'?'หุ้นรางวัล':''});
+    if(!/^(BUY|SELL|SEL|REW)$/.test(tp)){(out.other||=[]).push({code:tp,date:dmy(settle)});continue}
+    out.push({sym,type:/^SEL/.test(tp)?'sell':'buy',date:(eff&&dmy(eff[1]))||dmy(settle),qty:q,price:gross>0?+(gross/q).toFixed(6):up,fee,ref:'DIME-'+id,note:tp==='REW'?'หุ้นรางวัล':''});
   }
   return out;
 }

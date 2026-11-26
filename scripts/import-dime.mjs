@@ -75,7 +75,9 @@ for (const d of docs) {
       console.log(`\n===== ${rows.length ? 'OK' : 'FAIL'} ${d.when} · หน้า ${pages.length} · items ${pages.reduce((a, p) => a + p.items.length, 0)} · ตัดทิ้ง ${lines.dropped} · แถวที่อ่านได้ถ้าไม่ตัด = ${rawRows} =====`);
       lines.forEach(l => console.log('  ' + shape(l)));
     }
+    if (!rows.length && rows.other?.length) { rows.other.forEach(o => failed.push(`${d.when}: มีรายการประเภท ${o.code} (วันที่ ${o.date}) ยังไม่ได้บันทึก ต้องตรวจเอง`)); continue; }
     if (!rows.length) { failed.push(`${d.when}: อ่านตารางรายการไม่ได้ (รูปแบบ PDF อาจต่างจากที่รู้จัก)`); continue; }
+    (rows.other || []).forEach(o => failed.push(`${d.when}: มีรายการประเภท ${o.code} (วันที่ ${o.date}) ยังไม่ได้บันทึก ต้องตรวจเอง`));
     rows.forEach(r => trades.set(r.ref, r)); pdfOk++;
   } catch (e) {
     failed.push(`${d.when}: ${e?.name === 'PasswordException' ? 'รหัส PDF ไม่ถูกต้อง' : 'เปิดไฟล์ไม่ได้'}`);
