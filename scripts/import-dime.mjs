@@ -59,6 +59,7 @@ let pdfOk = 0, redacted = 0, rawRescue = 0, shown = { ok: 0, bad: 0 };
 const KEY = /^(BUY|SELL|REW|EXC|EXP|DIV|USD|THB|Order|History|Effective|Date|Confirmation|Note|Unit|Price|Gross|Amount|Fee|Total|ID|Settlement|Type|Transaction|Securities|Currency|Withholding|Tax|Include|Vat|CCY)$/i;
 const shape = l => l.split(' ').map(t => KEY.test(t) ? t : /^\[[A-Z]+\]$/.test(t) ? '[EX]' : /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) ? 'D' : /^[\d,]*\.?\d+$/.test(t) ? 'N' : /[\u0E00-\u0E7F]/.test(t) ? 'ท' : /\d/.test(t) ? 'X' : 'W').join(' ').replace(/(ท )+ท/g, 'ท…');
 const DEBUG = env.DEBUG_SHAPE === 'true';
+const typeCodes = new Map(); // รหัสประเภทรายการที่เจอหลังวันที่ (เช่น BUY/SELL) — ไม่ใช่ข้อมูลส่วนตัว
 for (const d of docs) {
   try {
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(d.buf), password: env.DIME_PDF_PASSWORD, isEvalSupported: false, verbosity: 0 }).promise;
@@ -66,6 +67,7 @@ for (const d of docs) {
     for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); pages.push({ items: (await pg.getTextContent()).items, vp: pg.getViewport({ scale: 1 }) }); }
     const lines = linesFromPages(pages); redacted += lines.dropped || 0;
     const rows = parseDime(lines);
+    if (DEBUG) for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+([A-Za-z]{2,8})\b/g)) typeCodes.set(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)'), (typeCodes.get(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)')) || 0) + 1);
     if (DEBUG && (rows.length ? shown.ok < 1 : shown.bad < 3)) {
       rows.length ? shown.ok++ : shown.bad++;
       const raw = []; for (const p of pages) { let y = null, line = []; for (const it of p.items) { const s = (it.str || '').trim(), yy = Math.round(it.transform[5]); if (y !== null && Math.abs(yy - y) > 2) { raw.push(line.join(' ')); line = []; } y = yy; if (s) line.push(s); } raw.push(line.join(' ')); }
@@ -124,5 +126,6 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
   written = toWrite.length;
   say(`${DRY ? '🧪 ทดลองรัน (ยังไม่บันทึก)' : '💾 บันทึกแล้ว'}: รายการใหม่ ${written - splitAdd} · แตกพาร์ ${splitAdd} · มีอยู่แล้ว ${skipped} · ข้ามเพราะอาจซ้ำกับที่กรอกเอง ${maybeDup}`);
 }
+if (DEBUG) say(`🔤 รหัสประเภทรายการที่เจอ: ${[...typeCodes].map(([k, v]) => `${k}×${v}`).join(', ')}`);
 if (failed.length) { say(`\n⚠️ อ่านไม่ได้ ${failed.length} ไฟล์:`); failed.forEach(f => say(`- ${f}`)); }
 done(0);
