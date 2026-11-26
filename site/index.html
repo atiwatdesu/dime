@@ -262,11 +262,19 @@ let pdfLib=null;
 const loadJs=src=>new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>no(new Error('โหลดตัวอ่าน PDF ไม่สำเร็จ'));document.head.appendChild(s)});
 async function getPdf(){if(pdfLib)return pdfLib;const b='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';await loadJs(b+'pdf.worker.min.js');await loadJs(b+'pdf.min.js');pdfLib=window.pdfjsLib;pdfLib.GlobalWorkerOptions.workerSrc=b+'pdf.worker.min.js';return pdfLib}
 async function pdfText(file){
-  const lib=await getPdf(),d=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;const all=[];
+  const lib=await getPdf(),task=lib.getDocument({data:new Uint8Array(await file.arrayBuffer())});
+  task.onPassword=async(update,reason)=>{const pw=await askPdfPw(file.name,reason===2);if(pw===null){task.destroy()}else{show(`<h3>กำลังอ่าน ${esc(file.name)}</h3><p class="note">ปลดล็อกและดึงข้อความ…</p>`);update(pw)}};
+  let d;try{d=await task.promise}catch(err){if(task.destroyed||/destroy|Worker was terminated/i.test(err?.message||''))throw{cancel:true};throw err}
+  const all=[];
   for(let i=1;i<=d.numPages;i++){const c=await (await d.getPage(i)).getTextContent();let y=null,line=[];
     for(const it of c.items){const yy=Math.round(it.transform[5]);if(y!==null&&Math.abs(yy-y)>2){all.push(line.join(' '));line=[]}y=yy;if(it.str.trim())line.push(it.str.trim())}all.push(line.join(' '))}
   return all.filter(Boolean);
 }
+function askPdfPw(name,wrong){return new Promise(res=>{
+  show(`<h3>ไฟล์นี้ล็อกรหัสผ่าน</h3><p class="note">${esc(name)}<br>ใส่รหัสเปิดไฟล์ PDF (statement ของ Dime มักใช้วันเดือนปีเกิดหรือเลขบัตรประชาชน) รหัสใช้ปลดล็อกในเครื่องนี้เท่านั้น ไม่ถูกส่งหรือบันทึกที่ไหน</p>
+  <form id="pwf"><input id="pwi" type="password" autocomplete="off" required><p class="err">${wrong?'รหัสไม่ถูกต้อง ลองอีกครั้ง':''}</p><div class="mf"><button type="button" class="ghost" id="pw0">ยกเลิก</button><button class="pri">เปิดไฟล์</button></div></form>`);
+  $('#pwi').focus();$('#pw0').onclick=()=>{hide();res(null)};$('#pwf').onsubmit=e=>{e.preventDefault();res($('#pwi').value)};
+})}
 /* Generic trade-line parser. TODO: replace with a Dime-specific parser once a sample statement is available. */
 const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,'ม.ค.':1,'ก.พ.':2,'มี.ค.':3,'เม.ย.':4,'พ.ค.':5,'มิ.ย.':6,'ก.ค.':7,'ส.ค.':8,'ก.ย.':9,'ต.ค.':10,'พ.ย.':11,'ธ.ค.':12};
 const STOP=new Set(['BUY','SELL','BOUGHT','SOLD','USD','THB','FEE','VAT','TOTAL','DATE','TIME','PRICE','QTY','AMOUNT','MARKET','LIMIT','ORDER','FILLED','US','ETF','NET','SEC','TAF','AM','PM','ID','NO','TYPE','STATUS','DIME']);
@@ -319,7 +327,7 @@ $('#pdfIn').onchange=async e=>{
         if(!t.sym||!/^\d{4}-\d\d-\d\d$/.test(t.date)||!(t.qty>0)||!(t.price>0)){$('#ier').textContent=`แถวที่ ${+i+1} ข้อมูลไม่ครบ (วันที่ต้องเป็น YYYY-MM-DD)`;return}rows.push(t)}
       ev.target.disabled=true;
       try{await saveMany(rows.map((t,n)=>({...t,t:Date.now()+n,src:'pdf:'+file.name.slice(0,80)})));rows.forEach(t=>open.add(t.sym));hide()}catch(err){$('#ier').textContent=errMsg(err);ev.target.disabled=false}};
-  }catch(err){show(`<h3>อ่านไฟล์ไม่สำเร็จ</h3><p>${esc(err?.message||'เกิดข้อผิดพลาด')}</p><div class="mf"><button class="pri" id="c0">ตกลง</button></div>`);$('#c0').onclick=hide}
+  }catch(err){if(err?.cancel){hide();return}show(`<h3>อ่านไฟล์ไม่สำเร็จ</h3><p>${esc(err?.message||'เกิดข้อผิดพลาด')}</p><div class="mf"><button class="pri" id="c0">ตกลง</button></div>`);$('#c0').onclick=hide}
 };
 
 /* JSON backup */
