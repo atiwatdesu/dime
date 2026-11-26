@@ -1,0 +1,37 @@
+name: Import Dime trades from Gmail
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'ดึงอีเมลตั้งแต่วันที่ (YYYY-MM-DD)'
+        default: '2025-01-01'
+      dry_run:
+        description: 'ทดลองรัน ไม่บันทึกลง Firestore'
+        type: boolean
+        default: true
+  # ดึงรายวัน: เอา # หน้าสองบรรทัดล่างออก (07:17 เวลาไทย อังคาร–เสาร์)
+  # schedule:
+  #   - cron: '17 0 * * 2-6'
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: node import-dime.mjs
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIME_PDF_PASSWORD: ${{ secrets.DIME_PDF_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          APP_USER_EMAIL: atiwatdesu@dime.com
+          SINCE: ${{ inputs.since || '2025-01-01' }}
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}

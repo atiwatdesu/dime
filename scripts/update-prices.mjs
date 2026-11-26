@@ -14,15 +14,24 @@ const now = new Date().toISOString();
 
 // 1) รวมหุ้นที่ยังถืออยู่ (ซื้อ − ขาย > 0) จากทุกผู้ใช้
 const snap = await db.collectionGroup('txns').get();
-const net = {};
+const byKey = {};
 snap.forEach(d => {
   const x = d.data(), owner = d.ref.parent.parent?.id || '';
-  if (!x.sym || !(x.qty > 0)) return;
-  const k = owner + '|' + x.sym;
-  net[k] = (net[k] || 0) + (x.type === 'sell' ? -x.qty : x.qty);
+  if (!x.sym) return;
+  (byKey[owner + '|' + x.sym] ||= []).push(x);
 });
+const net = {};
+for (const [k, list] of Object.entries(byKey)) {
+  list.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.t || 0) - (b.t || 0));
+  let q = 0;
+  for (const x of list) {
+    if (x.type === 'split') { if (x.ratio > 0) q *= x.ratio; }
+    else if (x.qty > 0) q += x.type === 'sell' ? -x.qty : x.qty;
+  }
+  net[k] = q;
+}
 const syms = [...new Set(Object.entries(net).filter(([, q]) => q > 1e-6).map(([k]) => k.split('|')[1]))].sort();
-console.log('Holdings:', syms.join(', ') || '(none)');
+console.log(`Holdings: ${syms.length} symbol(s)`); // repo เป็น public: ไม่พิมพ์ชื่อหุ้นหรือราคาใน log
 
 // 2) ราคาจาก Finnhub (free tier 60 ครั้ง/นาที → เว้น 1.1 วินาทีต่อครั้ง)
 const failed = [];
@@ -34,8 +43,7 @@ for (const sym of syms) {
     const v = q.c > 0 ? q.c : q.pc;
     if (!(v > 0)) throw new Error('no price');
     await db.doc(`prices/${sym}`).set({ v, pc: q.pc ?? null, quoteTime: q.t ? new Date(q.t * 1000).toISOString() : null, at: now, src: 'auto' });
-    console.log(sym, v);
-  } catch (e) { failed.push(sym); console.warn('FAILED', sym, e.message); }
+  } catch (e) { failed.push(sym); console.warn('FAILED one symbol:', e.message); }
   await sleep(1100);
 }
 
@@ -46,7 +54,7 @@ try {
   const v = j?.rates?.THB;
   if (!(v > 0)) throw new Error('no rate');
   await db.doc('fx/USDTHB').set({ v, rateDate: j.date || null, at: now, src: 'auto' });
-  console.log('USDTHB', v);
+  console.log('USDTHB updated');
 } catch (e) { failed.push('USDTHB'); console.warn('FAILED USDTHB', e.message); }
 
-if (failed.length) { console.error('Could not update:', failed.join(', ')); process.exitCode = failed.length > syms.length / 2 ? 1 : 0; }
+if (failed.length) { console.error(`Could not update ${failed.length} item(s)`); process.exitCode = failed.length > syms.length / 2 ? 1 : 0; }

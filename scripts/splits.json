@@ -1,0 +1,6 @@
+[
+  { "sym": "CYCU", "date": "2025-10-27", "from": 30, "to": 1, "source": "Cycurion 8-K, Oct 23 2025" },
+  { "sym": "MOBX", "date": "2026-04-07", "from": 10, "to": 1, "source": "Mobix Labs S-8, effective 4pm ET Apr 6 2026" },
+  { "sym": "CYCU", "date": "2026-08-28", "from": 8, "to": 1, "source": "Cycurion 8-K, Aug 26 2026" },
+  { "sym": "MOBX", "date": "2026-11-17", "from": 7, "to": 1, "source": "Mobix Labs 424B3, effective 4pm ET Nov 16 2026" }
+]
