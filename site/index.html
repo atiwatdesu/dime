@@ -261,7 +261,7 @@ function setModal(){
 /* PDF import — runs fully in the browser */
 let pdfLib=null;
 const loadJs=src=>new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>no(new Error('โหลดตัวอ่าน PDF ไม่สำเร็จ'));document.head.appendChild(s)});
-async function getPdf(){if(pdfLib)return pdfLib;const b='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';await loadJs(b+'pdf.worker.min.js');await loadJs(b+'pdf.min.js');pdfLib=window.pdfjsLib;pdfLib.GlobalWorkerOptions.workerSrc=b+'pdf.worker.min.js';return pdfLib}
+async function getPdf(){if(pdfLib)return pdfLib;const b='./vendor/';await loadJs(b+'pdf.worker.min.js');await loadJs(b+'pdf.min.js');pdfLib=window.pdfjsLib;pdfLib.GlobalWorkerOptions.workerSrc=b+'pdf.worker.min.js';return pdfLib}
 async function openPdf(file){
   const lib=await getPdf(),task=lib.getDocument({data:new Uint8Array(await file.arrayBuffer())});
   task.onPassword=async(update,reason)=>{const pw=await askPdfPw(file.name,reason===2);if(pw===null){task.destroy()}else{show(`<h3>กำลังเปิด ${esc(file.name)}</h3><p class="note">ปลดล็อกไฟล์…</p>`);update(pw)}};
@@ -354,7 +354,7 @@ $('#pdfIn').onchange=async e=>{
 
 /* PDF redaction: black out everything that is not stock data, then export a flattened PDF */
 let jsPdfLib=null;
-async function getJsPdf(){if(!jsPdfLib){await loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');jsPdfLib=window.jspdf.jsPDF}return jsPdfLib}
+async function getJsPdf(){if(!jsPdfLib){await loadJs('./vendor/jspdf.umd.min.js');jsPdfLib=window.jspdf.jsPDF}return jsPdfLib}
 // Dime preset for image-only PDFs (page 1 header zone only): fractions [x1,y1,x2,y2]
 const DIME_PRESET={1:[[.075,.175,.382,.317],[.402,.175,.931,.268],[.652,.270,.931,.316],[.61,.10,.92,.148]]};
 // Redact only the header zone: from the title row down to the Order History table.
@@ -405,7 +405,7 @@ async function openRedactor(file){
       doc.addImage(c.toDataURL('image/jpeg',.9),'JPEG',0,0,p.W,p.H);
       for(const t of p.keep){const cx=t.x+t.w/2,cy=t.y-t.h/2;if(!/^[\x20-\x7E]+$/.test(t.str)||p.boxes.some(b=>cx>=b.x&&cx<=b.x+b.w&&cy>=b.y&&cy<=b.y+b.h))continue;
         doc.setFontSize(t.h);doc.text(t.str,t.x,t.y,{renderingMode:'invisible'})}}
-    doc.save(file.name.replace(/\.pdf$/i,'')+'-redacted.pdf');ev.target.disabled=false;
+    doc.setProperties({title:'Redacted statement'});doc.save('statement-redacted-'+today()+'.pdf');ev.target.disabled=false;
   }catch(err){$('#rer').textContent='สร้างไฟล์ไม่สำเร็จ: '+(err?.message||'');ev.target.disabled=false}};
 }
 function drawOv(p,tmp){const g=p.ov.getContext('2d'),s=p.ov.width/p.W;g.clearRect(0,0,p.ov.width,p.ov.height);g.fillStyle='#000';for(const b of p.boxes)g.fillRect(b.x*s,b.y*s,b.w*s,b.h*s);
