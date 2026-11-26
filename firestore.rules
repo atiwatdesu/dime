@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ใส่อีเมล Google ของคุณ เพื่อให้มีแค่บัญชีนี้ที่ใช้แอพได้
+    function allowed() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in ['you@gmail.com'];
+    }
+
+    // ข้อมูลพอร์ต: อ่าน/เขียนได้เฉพาะเจ้าของ uid
+    match /users/{uid}/{document=**} {
+      allow read, write: if allowed() && request.auth.uid == uid;
+    }
+
+    // ราคาและเรต: อ่านได้อย่างเดียว ให้ GitHub Actions (Admin SDK) เป็นผู้เขียน
+    match /prices/{sym} {
+      allow read: if allowed();
+      allow write: if false;
+    }
+    match /fx/{pair} {
+      allow read: if allowed();
+      allow write: if false;
+    }
+  }
+}
