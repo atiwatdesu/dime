@@ -20,7 +20,7 @@ scripts/update-prices.mjs    สคริปต์อัปเดตราคา
 ### 1. Firebase
 1. สร้างโปรเจกต์ที่ [console.firebase.google.com](https://console.firebase.google.com) ใช้แพลน Spark (ฟรี) ได้
 2. **Authentication → Sign-in method** → เปิด **Email/Password** (ช่องแรกเท่านั้น)
-   - **Users → Add user** → Email: `ชื่อผู้ใช้@dime.local` (เช่น `atiwat@dime.local`) + รหัสผ่านอย่างน้อย 12 ตัว ในแอพให้พิมพ์แค่ชื่อผู้ใช้
+   - **Users → Add user** → Email: `ชื่อผู้ใช้@dime.com` (เช่น `atiwatdesu@dime.com`) + รหัสผ่านอย่างน้อย 12 ตัว ในแอพให้พิมพ์แค่ชื่อผู้ใช้
    - **Settings → User actions** → ปิด **Enable create (sign-up)** เพื่อกันคนอื่นสมัครเอง
 3. **Authentication → Settings → Authorized domains** → เพิ่ม `<username>.github.io`
 4. **Firestore Database** → Create database (Production mode, เลือก region เช่น `asia-southeast1`)

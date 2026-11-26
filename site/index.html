@@ -230,7 +230,7 @@ function setModal(){
   show(`<h3>ตั้งค่า</h3><label class="note">วิธีคิดต้นทุนเมื่อขาย</label><div class="seg" id="sm"><button type="button" data-m="fifo" class="${settings.method==='fifo'?'on':''}">FIFO (ซื้อก่อน ขายก่อน)</button><button type="button" data-m="avg" class="${settings.method==='avg'?'on':''}">ต้นทุนเฉลี่ย</button></div>
   <p class="note">FIFO: ขายแล้วตัดล็อตที่ซื้อเก่าสุดก่อน ต้นทุนเฉลี่ยของที่เหลือจะเปลี่ยน · ต้นทุนเฉลี่ย: ขายแล้วต้นทุนเฉลี่ยคงเดิม</p>
   <label for="sfx" class="note">เรต USD/THB ${fx?`(ล่าสุด ${fdt(fx.at)})`:''}</label><input id="sfx" inputmode="decimal" value="${fx?esc(fx.v):''}" placeholder="เช่น 33.50"><p class="err" id="ser"></p>
-  <label class="note">สำรองและย้ายข้อมูล</label><div class="acts"><button type="button" class="ghost" id="sEx">ส่งออก JSON</button><button type="button" class="ghost" id="sIm">นำเข้า JSON</button><button type="button" class="ghost" id="sOut">ออกจากระบบ</button></div><p class="note">ล็อกอินเป็น ${esc((auth.currentUser?.email||'').replace(/@dime\.local$/,''))}</p>
+  <label class="note">สำรองและย้ายข้อมูล</label><div class="acts"><button type="button" class="ghost" id="sEx">ส่งออก JSON</button><button type="button" class="ghost" id="sIm">นำเข้า JSON</button><button type="button" class="ghost" id="sOut">ออกจากระบบ</button></div><p class="note">ล็อกอินเป็น ${esc((auth.currentUser?.email||'').replace(/@dime\.com$/,''))}</p>
   <div class="mf"><button class="ghost" id="s0">ยกเลิก</button><button class="pri" id="s1">บันทึก</button></div>`);
   $('#sEx').onclick=exportJson;$('#sIm').onclick=()=>{$('#jsonIn').value='';$('#jsonIn').click()};$('#sOut').onclick=()=>{hide();signOut(auth)};
   let m=settings.method;
@@ -344,7 +344,7 @@ $('#bAdd').onclick=()=>txForm();
 document.addEventListener('submit',async e=>{
   if(e.target.id!=='login')return;e.preventDefault();
   const u=$('#lu').value.trim().toLowerCase(),btn=e.target.querySelector('button');
-  const email=u.includes('@')?u:u+'@dime.local';
+  const email=u.includes('@')?u:u+'@dime.com';
   btn.disabled=true;$('#ler').textContent='';
   try{await signInWithEmailAndPassword(auth,email,$('#lp').value)}
   catch(err){const c=err?.code||'';$('#ler').textContent=c.includes('too-many')?'ลองผิดหลายครั้งเกินไป รอสักครู่แล้วลองใหม่':c.includes('network')?'เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ต':'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';btn.disabled=false}
