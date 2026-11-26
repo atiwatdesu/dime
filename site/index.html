@@ -79,7 +79,7 @@ input,select{font:inherit;font-size:16px;width:100%;min-height:44px;padding:0 12
 <script type="module">
 import {firebaseConfig} from './config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {getFirestore,collection,doc,setDoc,deleteDoc,onSnapshot,writeBatch} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 {
@@ -230,7 +230,7 @@ function setModal(){
   show(`<h3>ตั้งค่า</h3><label class="note">วิธีคิดต้นทุนเมื่อขาย</label><div class="seg" id="sm"><button type="button" data-m="fifo" class="${settings.method==='fifo'?'on':''}">FIFO (ซื้อก่อน ขายก่อน)</button><button type="button" data-m="avg" class="${settings.method==='avg'?'on':''}">ต้นทุนเฉลี่ย</button></div>
   <p class="note">FIFO: ขายแล้วตัดล็อตที่ซื้อเก่าสุดก่อน ต้นทุนเฉลี่ยของที่เหลือจะเปลี่ยน · ต้นทุนเฉลี่ย: ขายแล้วต้นทุนเฉลี่ยคงเดิม</p>
   <label for="sfx" class="note">เรต USD/THB ${fx?`(ล่าสุด ${fdt(fx.at)})`:''}</label><input id="sfx" inputmode="decimal" value="${fx?esc(fx.v):''}" placeholder="เช่น 33.50"><p class="err" id="ser"></p>
-  <label class="note">สำรองและย้ายข้อมูล</label><div class="acts"><button type="button" class="ghost" id="sEx">ส่งออก JSON</button><button type="button" class="ghost" id="sIm">นำเข้า JSON</button><button type="button" class="ghost" id="sOut">ออกจากระบบ</button></div><p class="note">${esc(auth.currentUser?.email||'')}</p>
+  <label class="note">สำรองและย้ายข้อมูล</label><div class="acts"><button type="button" class="ghost" id="sEx">ส่งออก JSON</button><button type="button" class="ghost" id="sIm">นำเข้า JSON</button><button type="button" class="ghost" id="sOut">ออกจากระบบ</button></div><p class="note">ล็อกอินเป็น ${esc((auth.currentUser?.email||'').replace(/@dime\.local$/,''))}</p>
   <div class="mf"><button class="ghost" id="s0">ยกเลิก</button><button class="pri" id="s1">บันทึก</button></div>`);
   $('#sEx').onclick=exportJson;$('#sIm').onclick=()=>{$('#jsonIn').value='';$('#jsonIn').click()};$('#sOut').onclick=()=>{hide();signOut(auth)};
   let m=settings.method;
@@ -339,9 +339,16 @@ document.addEventListener('click',e=>{
   if(a==='det'){open.has(s)?open.delete(s):open.add(s);render()}
   else if(a==='avg')avgModal(s);else if(a==='px')pxModal(s);else if(a==='add')txForm({},s?{sym:s}:{});
   else if(a==='edit'){const x=txns.find(z=>z.id===b.dataset.id);if(x)txForm(x)}
-  else if(a==='login')signInWithPopup(auth,new GoogleAuthProvider()).catch(err=>{$('#stamp').textContent='ล็อกอินไม่สำเร็จ: '+(err?.code||'')});
 });
-$('#bAdd').onclick=()=>txForm();$('#bSet').onclick=setModal;
+$('#bAdd').onclick=()=>txForm();
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='login')return;e.preventDefault();
+  const u=$('#lu').value.trim().toLowerCase(),btn=e.target.querySelector('button');
+  const email=u.includes('@')?u:u+'@dime.local';
+  btn.disabled=true;$('#ler').textContent='';
+  try{await signInWithEmailAndPassword(auth,email,$('#lp').value)}
+  catch(err){const c=err?.code||'';$('#ler').textContent=c.includes('too-many')?'ลองผิดหลายครั้งเกินไป รอสักครู่แล้วลองใหม่':c.includes('network')?'เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ต':'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';btn.disabled=false}
+});$('#bSet').onclick=setModal;
 
 /* boot */
 let unsubs=[];
@@ -349,7 +356,7 @@ const app=initializeApp(firebaseConfig),auth=getAuth(app);fs=getFirestore(app);
 onAuthStateChanged(auth,u=>{
   unsubs.forEach(f=>f());unsubs=[];txns=[];autoP={};autoFx=null;ovr={p:{},fx:null};settings={method:'fifo'};mergePrices();
   uid=u?.uid||null;$('#topActs').hidden=!u;
-  if(!u){ready=false;render();$('#stamp').textContent='ล็อกอินเพื่อดูพอร์ตของคุณ';$('#list').innerHTML='<div class="empty">ข้อมูลพอร์ตเก็บใน Firebase ของคุณ เห็นได้เฉพาะบัญชีที่ล็อกอิน<br><br><button class="pri" data-a="login">ล็อกอินด้วย Google</button></div>';return}
+  if(!u){ready=false;render();$('#stamp').textContent='ล็อกอินเพื่อดูพอร์ตของคุณ';$('#list').innerHTML=`<form id="login" class="slip" style="max-width:380px;margin:0 auto;padding:22px"><h2 style="margin:0 0 14px">เข้าสู่ระบบ</h2><label class="note" for="lu">ชื่อผู้ใช้</label><input id="lu" autocomplete="username" autocapitalize="none" spellcheck="false" required><label class="note" for="lp" style="display:block;margin-top:10px">รหัสผ่าน</label><input id="lp" type="password" autocomplete="current-password" required><p class="err" id="ler"></p><button class="pri" style="width:100%">เข้าสู่ระบบ</button></form>`;return}
   ready=false;render();
   const fail=err=>{ready=true;render();$('#stamp').textContent=errMsg(err)};
   unsubs.push(onSnapshot(txCol(),s=>{txns=s.docs.map(d=>({...d.data(),id:d.id})).filter(x=>x.sym&&+x.qty>0);ready=true;render()},fail));

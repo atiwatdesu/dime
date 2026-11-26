@@ -2,11 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ใส่อีเมล Google ของคุณ เพื่อให้มีแค่บัญชีนี้ที่ใช้แอพได้
+    // ล็อกอินด้วยชื่อผู้ใช้: แอพแปลงชื่อผู้ใช้เป็น <ชื่อ>@dime.local
+    // ปลอดภัยขึ้นอีกขั้น: เปลี่ยนเป็น request.auth.token.email in ['atiwat@dime.local']
     function allowed() {
       return request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email in ['you@gmail.com'];
+        && request.auth.token.email.matches('.*@dime[.]local$');
     }
 
     // ข้อมูลพอร์ต: อ่าน/เขียนได้เฉพาะเจ้าของ uid

@@ -1,10 +1,9 @@
-// คัดลอกค่าจาก Firebase Console → Project settings → Your apps → Web app → SDK setup and configuration
-// ค่าเหล่านี้ไม่ใช่ความลับ ใส่ใน repo public ได้ สิ่งที่ปกป้องข้อมูลคือ firestore.rules
+// ค่าเชื่อมต่อ Firebase ไม่ใช่ความลับ ใส่ใน repo public ได้ สิ่งที่ปกป้องข้อมูลคือ firestore.rules
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:0000000000000000"
+  apiKey: "AIzaSyAnR-4BIBWS283xYLqwHD9lrAisJPCzpm4",
+  authDomain: "dime-5765a.firebaseapp.com",
+  projectId: "dime-5765a",
+  storageBucket: "dime-5765a.firebasestorage.app",
+  messagingSenderId: "913601887333",
+  appId: "1:913601887333:web:ab552d30fec267f0505a8c"
 };

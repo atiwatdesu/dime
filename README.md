@@ -3,7 +3,7 @@
 แอพสรุปพอร์ตหุ้นอเมริกา คิดต้นทุนแบบ FIFO หรือต้นทุนเฉลี่ย มีหน้าต่างจำลองการถัว และอัปเดตราคาอัตโนมัติทุกเช้า
 
 - **หน้าเว็บ:** GitHub Pages (โฟลเดอร์ `site/`)
-- **ข้อมูล:** Firebase Firestore + ล็อกอินด้วย Google
+- **ข้อมูล:** Firebase Firestore + ล็อกอินด้วยชื่อผู้ใช้/รหัสผ่าน
 - **ราคา:** GitHub Actions ดึงจาก Finnhub (หุ้น) และ Frankfurter (USD/THB) ทุกวันอังคาร–เสาร์ 06:47 เวลาไทย
 
 ```
@@ -19,11 +19,13 @@ scripts/update-prices.mjs    สคริปต์อัปเดตราคา
 
 ### 1. Firebase
 1. สร้างโปรเจกต์ที่ [console.firebase.google.com](https://console.firebase.google.com) ใช้แพลน Spark (ฟรี) ได้
-2. **Authentication → Sign-in method** → เปิด **Google**
+2. **Authentication → Sign-in method** → เปิด **Email/Password** (ช่องแรกเท่านั้น)
+   - **Users → Add user** → Email: `ชื่อผู้ใช้@dime.local` (เช่น `atiwat@dime.local`) + รหัสผ่านอย่างน้อย 12 ตัว ในแอพให้พิมพ์แค่ชื่อผู้ใช้
+   - **Settings → User actions** → ปิด **Enable create (sign-up)** เพื่อกันคนอื่นสมัครเอง
 3. **Authentication → Settings → Authorized domains** → เพิ่ม `<username>.github.io`
 4. **Firestore Database** → Create database (Production mode, เลือก region เช่น `asia-southeast1`)
-5. **Firestore → Rules** → วางเนื้อหาจาก `firestore.rules` **แก้ `you@gmail.com` เป็นอีเมลของคุณ** แล้วกด Publish
-6. **Project settings → Your apps → Add app (Web)** → คัดลอก `firebaseConfig` มาใส่ใน `site/config.js`
+5. **Firestore → Rules** → วางเนื้อหาจาก `firestore.rules` แล้วกด Publish
+6. ~~ใส่ `firebaseConfig` ใน `site/config.js`~~ ใส่แล้ว
 7. **Project settings → Service accounts → Generate new private key** → ได้ไฟล์ JSON (เก็บเป็นความลับ ห้าม commit)
 
 ### 2. Finnhub
