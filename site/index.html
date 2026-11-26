@@ -63,7 +63,6 @@ input,select{font:inherit;font-size:16px;width:100%;min-height:44px;padding:0 12
 .mf{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
 .err{color:var(--dn);font-size:14px}
 .scroll{overflow-x:auto}
-.pg{position:relative;margin:0 0 14px;border:1px solid var(--line);background:#fff}.pg canvas{display:block;width:100%;height:auto}.pg canvas.rov{position:absolute;inset:0;height:100%;cursor:crosshair;touch-action:none}
 @media(max-width:820px){.row{grid-template-columns:repeat(2,minmax(0,1fr))}.row .acts{grid-column:1/-1}.pl{text-align:start}}
 @media(max-width:600px){.top{grid-template-columns:1fr}.f,.res{grid-template-columns:1fr}table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;color:var(--mut)}.stack td:empty{display:none}}
 @media(prefers-reduced-motion:no-preference){.det{animation:dn .2s ease-out}@keyframes dn{from{opacity:0;transform:translateY(-4px)}}}
@@ -71,12 +70,12 @@ input,select{font:inherit;font-size:16px;width:100%;min-height:44px;padding:0 12
 <body>
 <div class="wrap"><header>
 <div><h1>Portfolio</h1><div class="sub" id="stamp">กำลังโหลดข้อมูล…</div></div>
-<div class="acts" id="topActs" hidden><button class="pri" id="bAdd">+ บันทึกรายการ</button><button id="bPdf">นำเข้า PDF</button><button class="ghost" id="bRed">ปิดข้อมูลใน PDF</button><button class="ghost" id="bSet">ตั้งค่า</button></div>
+<div class="acts" id="topActs" hidden><button class="pri" id="bAdd">+ บันทึกรายการ</button><button id="bPdf">นำเข้า PDF</button><button class="ghost" id="bSet">ตั้งค่า</button></div>
 </header></div>
 <section class="top"><div class="tot" id="tot"></div><div class="alloc" id="alloc"></div></section>
 <div class="wrap"><section class="sec"><h2>หุ้นที่ถืออยู่</h2><div id="list"></div></section><section class="sec" id="closedSec" hidden><h2>ขายหมดแล้ว</h2><div id="closed"></div></section></div>
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
-<input type="file" id="pdfIn" accept="application/pdf" hidden><input type="file" id="redIn" accept="application/pdf" hidden><input type="file" id="jsonIn" accept="application/json,.json" hidden>
+<input type="file" id="pdfIn" accept="application/pdf" hidden><input type="file" id="jsonIn" accept="application/json,.json" hidden>
 <script type="module">
 import {firebaseConfig} from './config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -267,12 +266,31 @@ async function openPdf(file){
   task.onPassword=async(update,reason)=>{const pw=await askPdfPw(file.name,reason===2);if(pw===null){task.destroy()}else{show(`<h3>กำลังเปิด ${esc(file.name)}</h3><p class="note">ปลดล็อกไฟล์…</p>`);update(pw)}};
   try{return await task.promise}catch(err){if(task.destroyed||/destroy|Worker was terminated/i.test(err?.message||''))throw{cancel:true};throw err}
 }
+/* Privacy: before any text is read, drop the statement's header zone (customer name, address,
+   tax ID, account no., invoice no., issue date, company registration) and any repeat of those
+   IDs/names elsewhere (page footer, payment details). Only what remains is parsed or shown. */
+function headerZoneDrop(items,vp){
+  const its=items.map((it,k)=>{const t=it.transform,[x,y]=vp.convertToViewportPoint(t[4],t[5]),h=Math.hypot(t[2],t[3])||it.height||8;return{k,str:(it.str||'').trim(),x,y,h}}).filter(i=>i.str);
+  const title=its.filter(i=>/Confirmation Note|ใบยืนยันการซื้อขาย/i.test(i.str));
+  const oh=its.filter(i=>/Order History|รายการคำสั่ง/i.test(i.str)).sort((a,b)=>a.y-b.y)[0];
+  if(!title.length)return new Set();
+  const top=Math.min(...title.map(i=>i.y-i.h))-14,bottom=oh?oh.y-oh.h-2:vp.height*.45;
+  const keep=new Set(title);
+  for(const E of its.filter(i=>/Effective\s*Date|วันที่คำสั่งมีผล/i.test(i.str))){keep.add(E);
+    const d=its.filter(i=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(i.str)&&i.x>E.x&&Math.abs(i.y-E.y)<16).sort((a,b)=>a.x-b.x)[0];if(d)keep.add(d)}
+  return new Set(its.filter(i=>i.y>=top&&i.y-i.h<=bottom&&!keep.has(i)).map(i=>i.k));
+}
 async function pdfText(file){
-  const d=await openPdf(file);
-  const all=[];
-  for(let i=1;i<=d.numPages;i++){const c=await (await d.getPage(i)).getTextContent();let y=null,line=[];
-    for(const it of c.items){const yy=Math.round(it.transform[5]);if(y!==null&&Math.abs(yy-y)>2){all.push(line.join(' '));line=[]}y=yy;if(it.str.trim())line.push(it.str.trim())}all.push(line.join(' '))}
-  return all.filter(Boolean);
+  const d=await openPdf(file),pages=[];
+  for(let i=1;i<=d.numPages;i++){const pg=await d.getPage(i);const items=(await pg.getTextContent()).items;pages.push({items,drop:headerZoneDrop(items,pg.getViewport({scale:1}))})}
+  const secret=new Set();
+  for(const p of pages)for(const k of p.drop){const s=(p.items[k].str||'').trim();if(/\d{6,}/.test(s)||/^(นาย|นางสาว|นาง|Mr|Mrs|Ms|Miss)[\s.]/i.test(s))secret.add(s)}
+  const hidden=s=>[...secret].some(x=>s.includes(x)||(x.match(/\d{6,}/g)||[]).some(n=>s.includes(n)));
+  const all=[];let dropped=0;
+  for(const p of pages){let y=null,line=[];
+    p.items.forEach((it,k)=>{const s=(it.str||'').trim();const yy=Math.round(it.transform[5]);if(y!==null&&Math.abs(yy-y)>2){all.push(line.join(' '));line=[]}y=yy;
+      if(!s)return;if(p.drop.has(k)||hidden(s)){dropped++;return}line.push(s)});all.push(line.join(' '))}
+  const lines=all.filter(Boolean);lines.dropped=dropped;return lines;
 }
 function askPdfPw(name,wrong){return new Promise(res=>{
   show(`<h3>ไฟล์นี้ล็อกรหัสผ่าน</h3><p class="note">${esc(name)}<br>ใส่รหัสเปิดไฟล์ PDF (statement ของ Dime มักใช้วันเดือนปีเกิดหรือเลขบัตรประชาชน) รหัสใช้ปลดล็อกในเครื่องนี้เท่านั้น ไม่ถูกส่งหรือบันทึกที่ไหน</p>
@@ -334,7 +352,7 @@ $('#pdfIn').onchange=async e=>{
     if(lines.join('').length<20)throw new Error('PDF นี้เป็นภาพ ไม่มีข้อความให้อ่าน (เช่น ไฟล์ที่สั่งพิมพ์ผ่าน Print to PDF) ให้ใช้ไฟล์ต้นฉบับที่ดาวน์โหลดจาก Dime โดยตรง');
     let list=parseDime(lines);const isDime=list.length>0;if(!isDime)list=parseTrades(lines);
     const dup=t=>txns.some(x=>(t.ref&&x.ref===t.ref)||x.sym===t.sym&&x.type===t.type&&x.date===t.date&&Math.abs(x.qty-t.qty)<1e-6&&Math.abs(x.price-t.price)<1e-4);
-    const raw=`<details><summary class="note" style="cursor:pointer">ดูข้อความที่อ่านได้จาก PDF</summary><pre style="font-size:12px;max-height:240px;overflow:auto;white-space:pre-wrap">${esc(lines.join('\n'))}</pre></details>`;
+    const raw=`<details><summary class="note" style="cursor:pointer">ดูข้อความที่อ่านได้จาก PDF${lines.dropped?` (ปิดข้อมูลส่วนตัวไปแล้ว ${lines.dropped} จุดก่อนอ่าน)`:''}</summary><pre style="font-size:12px;max-height:240px;overflow:auto;white-space:pre-wrap">${esc(lines.join('\n'))}</pre></details>`;
     if(!list.length){show(`<h3>ยังแยกรายการจากไฟล์นี้ไม่ได้</h3><p>ตัวอ่านตอนนี้เป็นแบบทั่วไป ยังไม่รู้จักรูปแบบ statement นี้ ส่งตัวอย่างไฟล์ (ปิดเลขบัญชี) ให้ปรับตัวอ่านได้</p>${raw}<div class="mf"><button class="pri" id="c0">ตกลง</button></div>`,true);$('#c0').onclick=hide;return}
     const cell=(i,k,v,w)=>`<input data-i="${i}" data-k="${k}" value="${esc(v)}" style="min-height:36px;padding:0 6px;font-size:14px;width:${w}">`;
     show(`<h3>พบ ${list.length} รายการ · ตรวจและแก้ก่อนบันทึก</h3><p class="note">${isDime?'อ่านจากใบยืนยันการซื้อขายของ Dime · ราคาต่อหุ้นคิดจากยอดเงิน ÷ จำนวนหุ้น · ค่าธรรมเนียมรวม VAT แล้ว':'ตัวอ่านแบบทั่วไปอาจสลับจำนวนกับราคา ตรวจกับ statement ทุกแถว'} · รายการที่ซ้ำกับของเดิมจะไม่ถูกติ๊ก</p>
@@ -351,67 +369,6 @@ $('#pdfIn').onchange=async e=>{
       try{await saveMany(rows.map((t,n)=>({...t,t:Date.now()+n,src:'pdf:'+file.name.slice(0,80)})));rows.forEach(t=>open.add(t.sym));hide()}catch(err){$('#ier').textContent=errMsg(err);ev.target.disabled=false}};
   }catch(err){if(err?.cancel){hide();return}show(`<h3>อ่านไฟล์ไม่สำเร็จ</h3><p>${esc(err?.message||'เกิดข้อผิดพลาด')}</p><div class="mf"><button class="pri" id="c0">ตกลง</button></div>`);$('#c0').onclick=hide}
 };
-
-/* PDF redaction: black out everything that is not stock data, then export a flattened PDF */
-let jsPdfLib=null;
-async function getJsPdf(){if(!jsPdfLib){await loadJs('./vendor/jspdf.umd.min.js');jsPdfLib=window.jspdf.jsPDF}return jsPdfLib}
-// Dime preset for image-only PDFs (page 1 header zone only): fractions [x1,y1,x2,y2]
-const DIME_PRESET={1:[[.075,.175,.382,.317],[.402,.175,.931,.268],[.652,.270,.931,.316],[.61,.10,.92,.148]]};
-// Redact only the header zone: from the title row down to the Order History table.
-// Keeps the title and the Effective Date (trade date); everything else in that zone is blacked out.
-function planPage(items,vp){
-  const its=items.filter(it=>it.str&&it.str.trim()).map(it=>{const t=it.transform,[x,y]=vp.convertToViewportPoint(t[4],t[5]),h=Math.hypot(t[2],t[3])||it.height||8;return{str:it.str.trim(),x,y,w:Math.max(it.width||0,h*.5),h}});
-  const title=its.filter(i=>/Confirmation Note|ใบยืนยันการซื้อขาย/i.test(i.str));
-  const oh=its.filter(i=>/Order History|รายการคำสั่ง/i.test(i.str)).sort((a,b)=>a.y-b.y)[0];
-  if(!title.length&&!oh)return{boxes:[],keep:its,textCount:its.length};
-  const top=title.length?Math.min(...title.map(i=>i.y-i.h))-14:0,bottom=oh?oh.y-oh.h-2:vp.height*.45;
-  const keep=new Set(title);
-  for(const E of its.filter(i=>/Effective\s*Date|วันที่คำสั่งมีผล/i.test(i.str))){keep.add(E);
-    const d=its.filter(i=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(i.str)&&i.x>E.x&&Math.abs(i.y-E.y)<16).sort((a,b)=>a.x-b.x)[0];if(d)keep.add(d)}
-  const zone=i=>i.y>=top&&i.y-i.h<=bottom;
-  const boxes=its.filter(i=>zone(i)&&!keep.has(i)).map(i=>({x:i.x-2,y:i.y-i.h-1,w:i.w+4,h:i.h*1.3+3}));
-  return{boxes,keep:its.filter(i=>!boxes.length||!zone(i)||keep.has(i)),textCount:its.length};
-}
-async function openRedactor(file){
-  show(`<h3>กำลังเปิด ${esc(file.name)}</h3><p class="note">กำลังโหลดไฟล์…</p>`);
-  let d;try{d=await openPdf(file)}catch(err){if(err?.cancel){hide();return}show(`<h3>เปิดไฟล์ไม่สำเร็จ</h3><p>${esc(err?.message||'')}</p><div class="mf"><button class="pri" id="c0">ตกลง</button></div>`);$('#c0').onclick=hide;return}
-  const pages=[];let textTotal=0;
-  for(let i=1;i<=d.numPages;i++){const pg=await d.getPage(i),vp=pg.getViewport({scale:1}),v2=pg.getViewport({scale:2});
-    const cv=document.createElement('canvas');cv.width=v2.width;cv.height=v2.height;await pg.render({canvasContext:cv.getContext('2d'),viewport:v2}).promise;
-    const plan=planPage((await pg.getTextContent()).items,vp);textTotal+=plan.textCount;
-    pages.push({n:i,W:vp.width,H:vp.height,cv,boxes:plan.boxes,keep:plan.keep})}
-  const noText=!textTotal;
-  show(`<h3>ปิดข้อมูลส่วนตัว</h3><p class="note">${noText?'ไฟล์นี้เป็นภาพ ไม่มีข้อความให้ตรวจอัตโนมัติ กด "ใช้ตำแหน่งของ Dime" หรือลากกรอบเอง':'ปิดโซนหัวเอกสารให้แล้ว (ข้อมูลลูกค้า เลขบัญชี เลขใบกำกับ วันที่ออกใบกำกับ เลขทะเบียน) เก็บวันที่คำสั่งมีผลไว้'} · <b>ลาก</b>เพื่อเพิ่มกรอบ · <b>คลิกกรอบ</b>เพื่อเอาออก</p>
-  <div class="acts" style="margin-bottom:12px"><button class="ghost" id="rPre">ใช้ตำแหน่งของ Dime</button><button class="ghost" id="rClr">ล้างกรอบทั้งหมด</button></div>
-  <div id="rPages">${pages.map(p=>`<div class="pg" data-n="${p.n}"></div>`).join('')}</div>
-  <p class="note">ไฟล์ที่ดาวน์โหลดจะถูกแปลงเป็นภาพ ข้อความใต้กรอบดำถูกลบจริง กู้คืนไม่ได้ และ<b>ไม่มีรหัสผ่าน</b> ตรวจทุกหน้าก่อนส่งให้คนอื่น</p><p class="err" id="rer"></p>
-  <div class="mf"><button class="ghost" id="r0">ปิด</button><button class="pri" id="r1">ดาวน์โหลด PDF ที่ปิดข้อมูลแล้ว</button></div>`,true);
-  for(const p of pages){const box=md.querySelector(`.pg[data-n="${p.n}"]`);p.cv.className='base';box.appendChild(p.cv);
-    const o=document.createElement('canvas');o.className='rov';o.width=p.cv.width;o.height=p.cv.height;box.appendChild(o);p.ov=o;drawOv(p);
-    let st=null;const pt=e=>{const r=o.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*p.W,y:(e.clientY-r.top)/r.height*p.H}};
-    o.onpointerdown=e=>{o.setPointerCapture(e.pointerId);st=pt(e)};
-    o.onpointermove=e=>{if(!st)return;const q=pt(e);drawOv(p,{x:Math.min(st.x,q.x),y:Math.min(st.y,q.y),w:Math.abs(q.x-st.x),h:Math.abs(q.y-st.y)})};
-    o.onpointerup=e=>{if(!st)return;const q=pt(e),w=Math.abs(q.x-st.x),h=Math.abs(q.y-st.y);
-      if(w<4&&h<4){const k=p.boxes.findIndex(b=>q.x>=b.x&&q.x<=b.x+b.w&&q.y>=b.y&&q.y<=b.y+b.h);if(k>=0)p.boxes.splice(k,1)}
-      else p.boxes.push({x:Math.min(st.x,q.x),y:Math.min(st.y,q.y),w,h});st=null;drawOv(p)}}
-  $('#rPre').onclick=()=>{for(const p of pages)for(const [a,b,c,e] of DIME_PRESET[p.n]||[])p.boxes.push({x:a*p.W,y:b*p.H,w:(c-a)*p.W,h:(e-b)*p.H});pages.forEach(p=>drawOv(p))};
-  $('#rClr').onclick=()=>{pages.forEach(p=>{p.boxes=[];drawOv(p)})};
-  $('#r0').onclick=hide;
-  $('#r1').onclick=async ev=>{ev.target.disabled=true;try{
-    const J=await getJsPdf();let doc=null;
-    for(const p of pages){const or=p.W>p.H?'l':'p';if(!doc)doc=new J({unit:'pt',format:[p.W,p.H],orientation:or});else doc.addPage([p.W,p.H],or);
-      const c=document.createElement('canvas');c.width=p.cv.width;c.height=p.cv.height;const g=c.getContext('2d'),s=c.width/p.W;
-      g.drawImage(p.cv,0,0);g.fillStyle='#000';for(const b of p.boxes)g.fillRect(b.x*s,b.y*s,b.w*s,b.h*s);
-      doc.addImage(c.toDataURL('image/jpeg',.9),'JPEG',0,0,p.W,p.H);
-      for(const t of p.keep){const cx=t.x+t.w/2,cy=t.y-t.h/2;if(!/^[\x20-\x7E]+$/.test(t.str)||p.boxes.some(b=>cx>=b.x&&cx<=b.x+b.w&&cy>=b.y&&cy<=b.y+b.h))continue;
-        doc.setFontSize(t.h);doc.text(t.str,t.x,t.y,{renderingMode:'invisible'})}}
-    doc.setProperties({title:'Redacted statement'});doc.save('statement-redacted-'+today()+'.pdf');ev.target.disabled=false;
-  }catch(err){$('#rer').textContent='สร้างไฟล์ไม่สำเร็จ: '+(err?.message||'');ev.target.disabled=false}};
-}
-function drawOv(p,tmp){const g=p.ov.getContext('2d'),s=p.ov.width/p.W;g.clearRect(0,0,p.ov.width,p.ov.height);g.fillStyle='#000';for(const b of p.boxes)g.fillRect(b.x*s,b.y*s,b.w*s,b.h*s);
-  if(tmp){g.strokeStyle='#e8452c';g.lineWidth=3;g.strokeRect(tmp.x*s,tmp.y*s,tmp.w*s,tmp.h*s)}}
-$('#bRed').onclick=()=>{$('#redIn').value='';$('#redIn').click()};
-$('#redIn').onchange=e=>{const f=e.target.files[0];if(f)openRedactor(f)};
 
 /* JSON backup */
 function exportJson(){
