@@ -8,10 +8,15 @@ export function headerZoneDrop(items,vp){
   const title=its.filter(i=>/Confirmation Note|ใบยืนยันการซื้อขาย/i.test(i.str));
   const oh=its.filter(i=>/Order History|รายการคำสั่ง/i.test(i.str)).sort((a,b)=>a.y-b.y)[0];
   if(!title.length)return new Set();
-  const top=Math.min(...title.map(i=>i.y-i.h))-14,bottom=oh?oh.y-oh.h-2:vp.height*.45;
-  const keep=new Set(title);
-  for(const E of its.filter(i=>/Effective\s*Date|วันที่คำสั่งมีผล/i.test(i.str))){keep.add(E);
-    const d=its.filter(i=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(i.str)&&i.x>E.x&&Math.abs(i.y-E.y)<16).sort((a,b)=>a.x-b.x)[0];if(d)keep.add(d)}
+  const top=Math.min(...title.map(i=>i.y-i.h))-14;
+  const keep=new Set(title),effRow=[];
+  for(const E of its.filter(i=>/Effective\s*Date|วันที่คำสั่งมีผล/i.test(i.str))){keep.add(E);effRow.push(E);
+    const d=its.filter(i=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(i.str)&&i.x>E.x&&Math.abs(i.y-E.y)<16).sort((a,b)=>a.x-b.x)[0];if(d){keep.add(d);effRow.push(d)}}
+  // ขอบล่างของโซน: แถว "วันที่คำสั่งมีผล / วันที่ออกใบกำกับ" คือแถวสุดท้ายของหัวเอกสาร (ตารางรายการอยู่ใต้แถวนี้เสมอ)
+  // ถ้าหาไม่เจอ ใช้ป้าย Order History หรือหัวตาราง และสุดท้ายใช้แถวแรกของตาราง ห้ามตัดลึกกว่าแถวแรก
+  const tableTop=its.filter(i=>/^(BUY|SELL|REW|EXC|EXP)$/.test(i.str)||/Order\s*ID|Settlement|Securities/i.test(i.str)).reduce((m,i)=>Math.min(m,i.y-i.h*3),Infinity);
+  let bottom=effRow.length?Math.max(...effRow.map(i=>i.y))+4:oh?oh.y-oh.h-2:vp.height*.45;
+  bottom=Math.min(bottom,tableTop);
   return new Set(its.filter(i=>i.y>=top&&i.y-i.h<=bottom&&!keep.has(i)).map(i=>i.k));
 }
 export function linesFromPages(pages){
