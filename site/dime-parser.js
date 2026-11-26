@@ -40,7 +40,7 @@ export function parseDime(lines){
   const dmy=s=>{const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?ymd(+m[3],+m[2],+m[1]):''};
   const eff=full.match(/Effective\s*Date\s*(?:\S+\s*){0,6}?(\d{1,2}\/\d{1,2}\/\d{4})/i);
   const N='(\\d[\\d,]*(?:\\.\\d+)?)';
-  const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z0-9.\\-]{0,9})\\s+(?:\\[[A-Z]+\\]\\s+)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}`,'g');
+  const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z.\\-]{0,9}?)\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}`,'g');
   const out=[],seen=new Set();let m;
   while((m=re.exec(full))){
     const [,id,settle,tp,sym]=m,[q,up,gross,fee]=m.slice(5,9).map(x=>+x.replace(/,/g,''));

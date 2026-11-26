@@ -57,7 +57,7 @@ const trades = new Map(); const failed = [];
 let pdfOk = 0, redacted = 0, rawRescue = 0, shown = { ok: 0, bad: 0 };
 // DEBUG_SHAPE: พิมพ์เฉพาะ "รูปร่าง" ของบรรทัด (ตัวเลข→N วันที่→D คำ→W ภาษาไทย→ท) ไม่มีชื่อหุ้น ตัวเลข หรือข้อมูลส่วนตัว
 const KEY = /^(BUY|SELL|REW|EXC|EXP|DIV|USD|THB|Order|History|Effective|Date|Confirmation|Note|Unit|Price|Gross|Amount|Fee|Total|ID|Settlement|Type|Transaction|Securities|Currency|Withholding|Tax|Include|Vat|CCY)$/i;
-const shape = l => l.split(' ').map(t => KEY.test(t) ? t : /^\[[A-Z]+\]$/.test(t) ? '[EX]' : /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) ? 'D' : /^[\d,]*\.?\d+$/.test(t) ? 'N' : /[\u0E00-\u0E7F]/.test(t) ? 'ท' : /\d/.test(t) ? 'X' : 'W').join(' ').replace(/(ท )+ท/g, 'ท…');
+const shape = l => l.split(' ').map(t => KEY.test(t) ? t : /^\[[A-Z]+\]$/.test(t) ? '[EX]' : /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) ? 'D' : /^[\d,]*\.?\d+$/.test(t) ? 'N' : /[\u0E00-\u0E7F]/.test(t) ? 'ท' : /\d/.test(t) ? t.replace(/[A-Za-z]/g, 'A').replace(/\d/g, '9') : 'W').join(' ').replace(/(ท )+ท/g, 'ท…');
 const DEBUG = env.DEBUG_SHAPE === 'true';
 const typeCodes = new Map(); // รหัสประเภทรายการที่เจอหลังวันที่ (เช่น BUY/SELL) — ไม่ใช่ข้อมูลส่วนตัว
 for (const d of docs) {
