@@ -10,6 +10,10 @@ on:
         description: 'ทดลองรัน ไม่บันทึกลง Firestore'
         type: boolean
         default: true
+      debug_shape:
+        description: 'พิมพ์โครงสร้างบรรทัด (ไม่มีข้อมูลจริง) เพื่อแก้ตัวอ่าน'
+        type: boolean
+        default: false
   # ดึงรายวัน: เอา # หน้าสองบรรทัดล่างออก (07:17 เวลาไทย อังคาร–เสาร์)
   # schedule:
   #   - cron: '17 0 * * 2-6'
@@ -34,4 +38,5 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           APP_USER_EMAIL: atiwatdesu@dime.com
           SINCE: ${{ inputs.since || '2025-01-01' }}
+          DEBUG_SHAPE: ${{ inputs.debug_shape || 'false' }}
           DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}

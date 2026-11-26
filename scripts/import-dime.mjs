@@ -54,7 +54,11 @@ if (env.LOCAL_PDF_DIR) {
 
 // ---------- 2) อ่าน PDF (ตัดข้อมูลส่วนตัวก่อนอ่าน) ----------
 const trades = new Map(); const failed = [];
-let pdfOk = 0, redacted = 0;
+let pdfOk = 0, redacted = 0, rawRescue = 0, shown = { ok: 0, bad: 0 };
+// DEBUG_SHAPE: พิมพ์เฉพาะ "รูปร่าง" ของบรรทัด (ตัวเลข→N วันที่→D คำ→W ภาษาไทย→ท) ไม่มีชื่อหุ้น ตัวเลข หรือข้อมูลส่วนตัว
+const KEY = /^(BUY|SELL|REW|EXC|EXP|DIV|USD|THB|Order|History|Effective|Date|Confirmation|Note|Unit|Price|Gross|Amount|Fee|Total|ID|Settlement|Type|Transaction|Securities|Currency|Withholding|Tax|Include|Vat|CCY)$/i;
+const shape = l => l.split(' ').map(t => KEY.test(t) ? t : /^\[[A-Z]+\]$/.test(t) ? '[EX]' : /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) ? 'D' : /^[\d,]*\.?\d+$/.test(t) ? 'N' : /[\u0E00-\u0E7F]/.test(t) ? 'ท' : /\d/.test(t) ? 'X' : 'W').join(' ').replace(/(ท )+ท/g, 'ท…');
+const DEBUG = env.DEBUG_SHAPE === 'true';
 for (const d of docs) {
   try {
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(d.buf), password: env.DIME_PDF_PASSWORD, isEvalSupported: false, verbosity: 0 }).promise;
@@ -62,6 +66,13 @@ for (const d of docs) {
     for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); pages.push({ items: (await pg.getTextContent()).items, vp: pg.getViewport({ scale: 1 }) }); }
     const lines = linesFromPages(pages); redacted += lines.dropped || 0;
     const rows = parseDime(lines);
+    if (DEBUG && (rows.length ? shown.ok < 1 : shown.bad < 3)) {
+      rows.length ? shown.ok++ : shown.bad++;
+      const raw = []; for (const p of pages) { let y = null, line = []; for (const it of p.items) { const s = (it.str || '').trim(), yy = Math.round(it.transform[5]); if (y !== null && Math.abs(yy - y) > 2) { raw.push(line.join(' ')); line = []; } y = yy; if (s) line.push(s); } raw.push(line.join(' ')); }
+      const rawRows = parseDime(raw.filter(Boolean)).length;
+      console.log(`\n===== ${rows.length ? 'OK' : 'FAIL'} ${d.when} · หน้า ${pages.length} · items ${pages.reduce((a, p) => a + p.items.length, 0)} · ตัดทิ้ง ${lines.dropped} · แถวที่อ่านได้ถ้าไม่ตัด = ${rawRows} =====`);
+      lines.forEach(l => console.log('  ' + shape(l)));
+    }
     if (!rows.length) { failed.push(`${d.when}: อ่านตารางรายการไม่ได้ (รูปแบบ PDF อาจต่างจากที่รู้จัก)`); continue; }
     rows.forEach(r => trades.set(r.ref, r)); pdfOk++;
   } catch (e) {
