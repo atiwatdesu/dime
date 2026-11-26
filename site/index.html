@@ -153,7 +153,7 @@ function slip(r,ann,isHeld){
   const det=o?`<div class="det"><div class="scroll"><table class="stack"><thead><tr><th>วันที่</th><th>ประเภท</th><th class="r">จำนวน</th><th class="r">ราคา</th><th class="r">ค่าธรรมเนียม</th><th class="r">ยอดเงิน</th><th class="r">${settings.method==='fifo'?'ล็อตคงเหลือ / กำไรที่ขาย':'กำไรที่ขาย'}</th><th></th></tr></thead><tbody>
   ${[...r.tx].reverse().map(x=>{const a=ann[x.id]||{},b=x.type==='buy',amt=b?x.qty*x.price+(+x.fee||0):x.qty*x.price-(+x.fee||0);
   const info=b?(a.pooled?'':`${qf(a.remain)} / ${qf(a.q0)}`):`<span class="${cls(a.realized)}">${sgn(a.realized)}</span>${a.over?' <span class="err">ขายเกินจำนวนที่มี</span>':''}`;
-  return`<tr><td>${esc(x.date)}</td><td><span class="tag ${b?'b':'s'}">${b?'ซื้อ':'ขาย'}</span></td><td class="r n">${qf(+x.qty)}</td><td class="r n">${usd(+x.price,4)}</td><td class="r n">${+x.fee?usd(+x.fee):'—'}</td><td class="r n">${usd(amt)}</td><td class="r n">${info}</td><td class="r"><button class="lnk" data-a="edit" data-id="${esc(x.id)}">แก้</button></td></tr>`}).join('')}
+  return`<tr><td>${esc(x.date)}</td><td><span class="tag ${b?'b':'s'}">${b?'ซื้อ':'ขาย'}</span></td><td class="r n">${qf(+x.qty)}</td><td class="r n">${usd(+x.price,4)}</td><td class="r n">${+x.fee?usd(+x.fee):'—'}</td><td class="r n">${usd(amt)}${x.cur==='THB'&&+x.fx>0?`<br><small style="color:var(--mut)">฿${(amt*x.fx).toLocaleString('en-US',{maximumFractionDigits:2})} @${esc(x.fx)}</small>`:''}</td><td class="r n">${info}</td><td class="r"><button class="lnk" data-a="edit" data-id="${esc(x.id)}">แก้</button></td></tr>`}).join('')}
   </tbody></table></div><div class="mf"><button class="ghost" data-a="add" data-s="${s}">+ เพิ่มรายการ ${s}</button></div></div>`:'';
   return`<div class="slip">${head}${det}</div>`;
 }
@@ -166,32 +166,48 @@ ov.addEventListener('click',e=>{if(e.target===ov)hide()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')hide()});
 
 function txForm(x={},pre={}){
-  const v={sym:'',type:'buy',date:today(),qty:'',price:'',fee:'',...pre,...x};
+  const v={sym:'',type:'buy',date:today(),qty:'',price:'',fee:'',cur:'USD',...pre,...x};
+  const curFx=+prices.fx?.v;let cur=v.cur==='THB'?'THB':'USD';
+  const rate0=+v.fx>0?+v.fx:(isFinite(curFx)?curFx:'');
+  const pv=cur==='THB'?(v.priceThb??''):v.price,fv=cur==='THB'?(v.feeThb??''):v.fee;
   show(`<h3>${x.id?'แก้รายการ':'บันทึกรายการซื้อ/ขาย'}</h3><form id="tf"><div class="f">
   <div><label for="fs">หุ้น (ticker)</label><input id="fs" value="${esc(v.sym)}" placeholder="เช่น AAPL" required autocapitalize="characters"></div>
   <div><label>ประเภท</label><div class="seg" id="fty"><button type="button" data-t="buy" class="${v.type==='buy'?'on':''}">ซื้อ</button><button type="button" data-t="sell" class="${v.type==='sell'?'on':''}">ขาย</button></div></div>
   <div><label for="fd">วันที่</label><input id="fd" type="date" value="${esc(v.date)}" required></div>
   <div><label for="fq">จำนวนหุ้น</label><input id="fq" inputmode="decimal" value="${esc(v.qty)}" placeholder="0.5" required></div>
-  <div><label for="fp">ราคาต่อหุ้น (USD)</label><input id="fp" inputmode="decimal" value="${esc(v.price)}" placeholder="0.00" required></div>
-  <div><label for="ff">ค่าธรรมเนียม (USD, ถ้ามี)</label><input id="ff" inputmode="decimal" value="${esc(v.fee)}" placeholder="0"></div>
+  <div><label>สกุลเงินที่กรอก</label><div class="seg" id="fcur"><button type="button" data-c="USD" class="${cur==='USD'?'on':''}">USD $</button><button type="button" data-c="THB" class="${cur==='THB'?'on':''}">บาท ฿</button></div></div>
+  <div id="frw" ${cur==='THB'?'':'hidden'}><label for="frt">เรต (บาท ต่อ 1 USD)</label><input id="frt" inputmode="decimal" value="${esc(rate0)}" placeholder="เช่น 34.10"></div>
+  <div><label for="fp" id="fpl"></label><input id="fp" inputmode="decimal" value="${esc(pv)}" placeholder="0.00" required></div>
+  <div><label for="ff" id="ffl"></label><input id="ff" inputmode="decimal" value="${esc(fv)}" placeholder="0"></div>
   </div><p class="note" id="fsum"></p><p class="err" id="fer"></p><div class="mf">${x.id?'<button type="button" class="ghost" id="fdel" style="margin-inline-end:auto;color:var(--dn)">ลบรายการ</button>':''}<button type="button" class="ghost" id="fx">ยกเลิก</button><button class="pri">บันทึก</button></div></form>`);
   let type=v.type;
-  const sum=()=>{const q=num($('#fq').value),p=num($('#fp').value),f=num($('#ff').value)||0;$('#fsum').textContent=isFinite(q*p)?(type==='buy'?'ใช้เงินรวม ':'ได้เงินสุทธิ ')+usd(type==='buy'?q*p+f:q*p-f):''};
+  const lab=()=>{const u=cur==='THB'?'บาท':'USD';$('#fpl').textContent=`ราคาต่อหุ้น (${u})`;$('#ffl').textContent=`ค่าธรรมเนียม (${u}, ถ้ามี)`;$('#frw').hidden=cur!=='THB'};
+  const vals=()=>{const q=num($('#fq').value),pIn=num($('#fp').value),fIn=num($('#ff').value)||0,rt=num($('#frt').value);
+    const k=cur==='THB'?rt:1;return{q,pIn,fIn,rt,price:pIn/k,fee:fIn/k}};
+  const sum=()=>{const o=vals();if(!isFinite(o.q*o.pIn)){$('#fsum').textContent='';return}
+    const tot=type==='buy'?o.q*o.price+o.fee:o.q*o.price-o.fee,w=type==='buy'?'ใช้เงินรวม ':'ได้เงินสุทธิ ';
+    $('#fsum').textContent=cur==='THB'?(o.rt>0?`${w}฿${(tot*o.rt).toLocaleString('en-US',{maximumFractionDigits:2})} ≈ ${usd(tot)} · ราคา ${usd(o.price,4)} ต่อหุ้น`:'ใส่เรตเงินบาทเพื่อแปลงเป็น USD'):w+usd(tot)};
   $('#fty').onclick=e=>{const b=e.target.closest('button');if(!b)return;type=b.dataset.t;$('#fty').querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===b));sum()};
-  md.oninput=sum;sum();$('#fx').onclick=hide;
+  $('#fcur').onclick=e=>{const b=e.target.closest('button');if(!b||b.dataset.c===cur)return;
+    const rt=num($('#frt').value),conv=(id,m)=>{const n=num($(id).value);if(isFinite(n)&&rt>0)$(id).value=+(n*m).toFixed(m>1?2:4)};
+    if(rt>0){const m=b.dataset.c==='THB'?rt:1/rt;conv('#fp',m);conv('#ff',m)}
+    cur=b.dataset.c;$('#fcur').querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===b));lab();sum()};
+  lab();md.oninput=sum;sum();$('#fx').onclick=hide;
   if(x.id)$('#fdel').onclick=async e=>{if(e.target.dataset.c){await del(x.id);hide()}else{e.target.dataset.c=1;e.target.textContent='กดอีกครั้งเพื่อยืนยันการลบ'}};
-  $('#tf').onsubmit=async e=>{e.preventDefault();
-    const d={sym:$('#fs').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,''),type,date:$('#fd').value,qty:num($('#fq').value),price:num($('#fp').value),fee:num($('#ff').value)||0};
+  $('#tf').onsubmit=async e=>{e.preventDefault();const o=vals();
+    if(cur==='THB'&&!(o.rt>0)){$('#fer').textContent='ใส่เรตเงินบาท (บาท ต่อ 1 USD)';return}
+    const d={sym:$('#fs').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,''),type,date:$('#fd').value,qty:o.q,price:+o.price.toFixed(6),fee:+o.fee.toFixed(4),cur};
+    if(cur==='THB')Object.assign(d,{fx:o.rt,priceThb:o.pIn,feeThb:o.fIn});
     if(!d.sym||!(d.qty>0)||!(d.price>0)||!d.date){$('#fer').textContent='กรอกหุ้น วันที่ จำนวน และราคาให้ครบ (จำนวนและราคาต้องมากกว่า 0)';return}
     try{await save(x.id,{...d,t:x.t||Date.now(),src:x.src||'manual'});open.add(d.sym);hide()}catch(err){$('#fer').textContent=errMsg(err)}};
 }
 
 function avgModal(sym){
   const r=compute(txns,settings.method).rows.find(z=>z.sym===sym);if(!r)return;
-  const cur=priceOf(sym);let mode='usd';
+  const cur=priceOf(sym),fx=+prices.fx?.v;let mode='usd';
   show(`<h3>ถัว ${esc(sym)}</h3><p class="note">ตอนนี้ถือ <b class="n">${qf(r.qty)}</b> หุ้น · ต้นทุนเฉลี่ย <b class="n">${usd(r.avg,4)}</b> · ราคาปัจจุบัน <b class="n">${usd(cur)}</b></p>
   <div class="f"><div><label for="ap">ราคาที่จะซื้อ (USD)</label><input id="ap" inputmode="decimal" value="${isFinite(cur)?cur:''}"></div>
-  <div><label>ซื้อเป็น</label><div class="seg" id="am"><button type="button" data-m="usd" class="on">จำนวนเงิน</button><button type="button" data-m="sh">จำนวนหุ้น</button></div></div>
+  <div><label>ซื้อเป็น</label><div class="seg" id="am"><button type="button" data-m="usd" class="on">เงิน $</button><button type="button" data-m="thb">เงิน ฿</button><button type="button" data-m="sh">หุ้น</button></div></div>
   <div><label for="av" id="avl">ลงเงินเพิ่ม (USD)</label><input id="av" inputmode="decimal" placeholder="เช่น 200"></div>
   <div><label for="af">ค่าธรรมเนียม (USD, ถ้ามี)</label><input id="af" inputmode="decimal" placeholder="0"></div></div>
   <div class="res" id="ar"></div>
@@ -200,19 +216,19 @@ function avgModal(sym){
   let last=null;
   const calc=()=>{
     const p=num($('#ap').value),v=num($('#av').value),f=num($('#af').value)||0;
-    const sh=mode==='usd'?v/p:v,money=sh*p+f;
-    const ok=p>0&&v>0,nq=r.qty+sh,na=(r.cost+money)/nq,ref=isFinite(cur)?cur:p;
+    const amt=mode==='usd'?v:mode==='thb'?v/fx:NaN,sh=mode==='sh'?v:amt/p,money=sh*p+f;
+    const ok=p>0&&v>0&&(mode!=='thb'||fx>0),nq=r.qty+sh,na=(r.cost+money)/nq,ref=isFinite(cur)?cur:p;
     last=ok?{sh,p,f}:null;
     $('#ar').innerHTML=ok?`<div class="hero"><span>ต้นทุนเฉลี่ยใหม่</span><b>${usd(r.avg,4)} → ${usd(na,4)}</b> <span style="display:inline">(${pct(na/r.avg-1)})</span></div>
-    <div><span>${mode==='usd'?'ได้หุ้นเพิ่ม':'ใช้เงิน'}</span><b>${mode==='usd'?qf(sh)+' หุ้น':usd(money)}</b></div><div><span>จำนวนหุ้นรวม</span><b>${qf(nq)}</b></div>
+    <div><span>${mode==='sh'?'ใช้เงิน':'ได้หุ้นเพิ่ม'}</span><b>${mode==='sh'?usd(money)+(fx>0?` <span style="display:inline;font-size:14px">≈ ${thb(money*fx)}</span>`:''):qf(sh)+' หุ้น'}</b></div><div><span>จำนวนหุ้นรวม</span><b>${qf(nq)}</b></div>
     <div><span>กำไร/ขาดทุนที่ราคา ${usd(ref)}</span><b>${pct(ref/r.avg-1)} → ${pct(ref/na-1)}</b></div><div><span>ต้นทุนรวมใหม่</span><b>${usd(r.cost+money)}</b></div>`
-    :`<div class="hero"><span>กรอกราคาและ${mode==='usd'?'จำนวนเงิน':'จำนวนหุ้น'}ที่จะซื้อ</span><b>${usd(r.avg,4)}</b></div>`;
+    :`<div class="hero"><span>${mode==='thb'&&!(fx>0)?'ยังไม่มีเรต USD/THB ตั้งได้ที่หน้าตั้งค่า':'กรอกราคาและ'+(mode==='sh'?'จำนวนหุ้น':'จำนวนเงิน')+'ที่จะซื้อ'}</span><b>${usd(r.avg,4)}</b></div>`;
     const T=num($('#at').value);
     $('#atr').textContent=!isFinite(T)?'':!(p>0)?'ใส่ราคาที่จะซื้อก่อน':(p<T&&T<r.avg)||(p>T&&T>r.avg)?(()=>{const s=(r.cost+f-T*r.qty)/(T-p);return`ต้องซื้อเพิ่ม ${qf(s)} หุ้น ใช้เงิน ${usd(s*p+f)}`})():`ซื้อที่ราคา ${usd(p)} ทำให้ต้นทุนเฉลี่ยไปถึง ${usd(T)} ไม่ได้ เป้าหมายต้องอยู่ระหว่างราคาซื้อกับต้นทุนปัจจุบัน`;
   };
-  $('#am').onclick=e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.m;$('#am').querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===b));$('#avl').textContent=mode==='usd'?'ลงเงินเพิ่ม (USD)':'จำนวนหุ้นที่จะซื้อ';$('#av').placeholder=mode==='usd'?'เช่น 200':'เช่น 1.5';calc()};
+  $('#am').onclick=e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.m;$('#am').querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===b));$('#avl').textContent=mode==='usd'?'ลงเงินเพิ่ม (USD)':mode==='thb'?`ลงเงินเพิ่ม (บาท${fx>0?' · เรต '+fx.toFixed(2):''})`:'จำนวนหุ้นที่จะซื้อ';$('#av').placeholder=mode==='usd'?'เช่น 200':mode==='thb'?'เช่น 5000':'เช่น 1.5';calc()};
   md.oninput=calc;calc();$('#ax').onclick=hide;
-  $('#as').onclick=()=>txForm({},{sym,type:'buy',qty:last?+last.sh.toFixed(6):'',price:last?last.p:(isFinite(cur)?cur:''),fee:last?.f||''});
+  $('#as').onclick=()=>{const q=last?+last.sh.toFixed(6):'',p=last?last.p:(isFinite(cur)?cur:''),f=last?.f||'';txForm({},mode==='thb'&&fx>0?{sym,type:'buy',qty:q,cur:'THB',fx,priceThb:p?+(p*fx).toFixed(2):'',feeThb:f?+(f*fx).toFixed(2):''}:{sym,type:'buy',qty:q,price:p,fee:f})};
 }
 
 function pxModal(sym){
@@ -308,12 +324,12 @@ $('#pdfIn').onchange=async e=>{
 
 /* JSON backup */
 function exportJson(){
-  const data={app:'us-portfolio',version:1,exportedAt:new Date().toISOString(),settings,txns:txns.map(({id,sym,type,date,qty,price,fee,t,src})=>({id,sym,type,date,qty,price,fee,t,src}))};
+  const data={app:'us-portfolio',version:1,exportedAt:new Date().toISOString(),settings,txns:txns.map(({id,sym,type,date,qty,price,fee,t,src,cur,fx,priceThb,feeThb})=>({id,sym,type,date,qty,price,fee,t,src,cur:cur||'USD',...(cur==='THB'?{fx,priceThb,feeThb}:{})}))};
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download=`portfolio-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 }
 $('#jsonIn').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
-  try{const d=JSON.parse(await f.text());const list=(Array.isArray(d)?d:d.txns||[]).map(x=>({sym:String(x.sym||'').toUpperCase(),type:x.type==='sell'?'sell':'buy',date:String(x.date||''),qty:num(x.qty),price:num(x.price),fee:num(x.fee)||0,t:+x.t||Date.now(),src:x.src||'json',id:x.id})).filter(x=>x.sym&&/^\d{4}-\d\d-\d\d$/.test(x.date)&&x.qty>0&&x.price>0);
+  try{const d=JSON.parse(await f.text());const list=(Array.isArray(d)?d:d.txns||[]).map(x=>({sym:String(x.sym||'').toUpperCase(),type:x.type==='sell'?'sell':'buy',date:String(x.date||''),qty:num(x.qty),price:num(x.price),fee:num(x.fee)||0,t:+x.t||Date.now(),src:x.src||'json',id:x.id,cur:x.cur==='THB'?'THB':'USD',...(x.cur==='THB'&&+x.fx>0?{fx:+x.fx,priceThb:num(x.priceThb),feeThb:num(x.feeThb)||0}:{})})).filter(x=>x.sym&&/^\d{4}-\d\d-\d\d$/.test(x.date)&&x.qty>0&&x.price>0);
     const have=new Set(txns.map(x=>x.id)),fresh=list.filter(x=>!x.id||!have.has(x.id));
     await saveMany(fresh);if(d.settings?.method)await setDoc(doc(fs,`users/${uid}/meta/settings`),{method:d.settings.method==='avg'?'avg':'fifo'});
     show(`<h3>นำเข้าเรียบร้อย</h3><p>เพิ่ม ${fresh.length} รายการ${list.length-fresh.length?` (ข้าม ${list.length-fresh.length} รายการที่มีอยู่แล้ว)`:''}</p><div class="mf"><button class="pri" id="c0">ตกลง</button></div>`);$('#c0').onclick=hide;
