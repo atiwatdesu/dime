@@ -39,7 +39,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .sec{padding:28px 0}
 .slip{border:1px solid var(--line);border-radius:14px;background:var(--card);margin-bottom:12px}
 .row{display:grid;grid-template-columns:minmax(90px,1.1fr) repeat(4,minmax(0,1fr)) auto;gap:12px;align-items:center;padding:16px 18px}
-.sym{font:700 22px "Space Grotesk",sans-serif}.row small{display:block;color:var(--mut);font-size:13px}
+.sym{font:700 22px "Space Grotesk",sans-serif}a.sym{display:block;color:inherit;text-decoration:none}a.sym:hover{text-decoration:underline}a.sym:focus-visible{outline:3px solid #3dbf7a;outline-offset:2px;border-radius:4px}.row small{display:block;color:var(--mut);font-size:13px}
 .row .n{font-size:17px;white-space:nowrap}.up{color:var(--up)}.dn{color:var(--dn)}
 .pl{text-align:right}.pl .n{font-size:22px;font-weight:700}
 .row .acts button{min-height:40px;padding:0 12px;font-size:14px}
@@ -78,7 +78,7 @@ input,select{font:inherit;font-size:16px;width:100%;min-height:44px;padding:0 12
 <input type="file" id="pdfIn" accept="application/pdf" hidden><input type="file" id="jsonIn" accept="application/json,.json" hidden>
 <script type="module">
 import {firebaseConfig} from './config.js';
-import {ymd,parseDime,linesFromPages,symLabel} from './dime-parser.js';
+import {ymd,parseDime,linesFromPages,symLabel,parseOcc} from './dime-parser.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {getFirestore,collection,doc,setDoc,deleteDoc,onSnapshot,writeBatch} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -145,15 +145,17 @@ function render(){
   $('#closedSec').hidden=!closed.length;
   $('#closed').innerHTML=closed.map(r=>slip(r,ann,false)).join('');
 }
+/* กดชื่อหุ้น → หน้าข่าวบน Yahoo Finance (ออปชันใช้หุ้นอ้างอิง, BRK.B → BRK-B) */
+const newsUrl=s=>'https://finance.yahoo.com/quote/'+encodeURIComponent((parseOcc(s)?.root||s).replace(/\./g,'-'))+'/news/';
 function slip(r,ann,isHeld){
   const s=esc(r.sym),o=open.has(r.sym);
-  const head=isHeld?`<div class="row"><div><div class="sym">${esc(symLabel(r.sym))}</div><small>${qf(r.qty)} ${/\d{6}[CP]\d{8}$/.test(r.sym)?'สัญญา':'หุ้น'}</small></div>
+  const head=isHeld?`<div class="row"><div><a class="sym" href="${newsUrl(r.sym)}" target="_blank" rel="noopener" title="ข่าวล่าสุดของ ${esc(symLabel(r.sym))} บน Yahoo Finance">${esc(symLabel(r.sym))} <span aria-hidden="true" style="font-size:13px;font-weight:500;opacity:.55">ข่าว ↗</span></a><small>${qf(r.qty)} ${/\d{6}[CP]\d{8}$/.test(r.sym)?'สัญญา':'หุ้น'}</small></div>
   <div><small>ต้นทุนเฉลี่ย</small><span class="n">${usd(r.avg,r.avg<10?4:2)}</span></div>
   <div><small>ราคาปัจจุบัน <button class="lnk" data-a="px" data-s="${s}">แก้</button></small><span class="n">${usd(r.px)}</span></div>
   <div><small>มูลค่า</small><span class="n">${usd(r.val)}</span></div>
   <div class="pl ${cls(r.pl)}"><small>กำไร/ขาดทุน</small><span class="n">${pct(r.plp)}</span><small class="${cls(r.pl)}">${sgn(r.pl)}</small></div>
   <div class="acts"><button class="ghost" data-a="det" data-s="${s}">${o?'ซ่อน ▴':'รายละเอียด ▾'}</button><button class="pri" data-a="avg" data-s="${s}">ถัว</button></div></div>`
-  :`<div class="row"><div><div class="sym">${esc(symLabel(r.sym))}</div><small>ขายหมดแล้ว</small></div><div></div><div></div><div></div><div class="pl ${cls(r.realized)}"><small>กำไรที่ขายแล้ว</small><span class="n">${sgn(r.realized)}</span></div><div class="acts"><button class="ghost" data-a="det" data-s="${s}">${o?'ซ่อน ▴':'ประวัติ ▾'}</button></div></div>`;
+  :`<div class="row"><div><a class="sym" href="${newsUrl(r.sym)}" target="_blank" rel="noopener" title="ข่าวล่าสุดของ ${esc(symLabel(r.sym))} บน Yahoo Finance">${esc(symLabel(r.sym))} <span aria-hidden="true" style="font-size:13px;font-weight:500;opacity:.55">ข่าว ↗</span></a><small>ขายหมดแล้ว</small></div><div></div><div></div><div></div><div class="pl ${cls(r.realized)}"><small>กำไรที่ขายแล้ว</small><span class="n">${sgn(r.realized)}</span></div><div class="acts"><button class="ghost" data-a="det" data-s="${s}">${o?'ซ่อน ▴':'ประวัติ ▾'}</button></div></div>`;
   const det=o?`<div class="det"><div class="scroll"><table class="stack"><thead><tr><th>วันที่</th><th>ประเภท</th><th class="r">จำนวน</th><th class="r">ราคา</th><th class="r">ค่าธรรมเนียม</th><th class="r">ยอดเงิน</th><th class="r">${settings.method==='fifo'?'ล็อตคงเหลือ / กำไรที่ขาย':'กำไรที่ขาย'}</th><th></th></tr></thead><tbody>
   ${[...r.tx].reverse().map(x=>{if(x.type==='split')return`<tr><td>${esc(x.date)}</td><td><span class="tag s">แตกพาร์</span></td><td class="r n" colspan="5">${qf(+x.from)} หุ้น → ${qf(+x.to)} หุ้น</td><td class="r n"></td><td class="r"><button class="lnk" data-a="edit" data-id="${esc(x.id)}">แก้</button></td></tr>`;const a=ann[x.id]||{},b=x.type==='buy',amt=b?x.qty*x.price+(+x.fee||0):x.qty*x.price-(+x.fee||0);
   const info=b?(a.pooled?'':`${qf(a.remain)} / ${qf(a.q0)}`):`<span class="${cls(a.realized)}">${sgn(a.realized)}</span>${a.over?' <span class="err">ขายเกินจำนวนที่มี</span>':''}`;
