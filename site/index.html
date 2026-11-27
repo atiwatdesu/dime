@@ -140,7 +140,7 @@ function render(){
   const lifeThb=val*fx+gotThb-paidThb;
   $('#stamp').textContent=!ready?'กำลังโหลดข้อมูล…':(prices.at?'ราคาอัปเดต '+fdt(prices.at):'ยังไม่มีการอัปเดตราคา')+(settings.method==='avg'?' · คิดแบบต้นทุนเฉลี่ย':' · คิดแบบ FIFO');
   $('#tot').innerHTML=`<div style="font-size:14px;opacity:.8">มูลค่าพอร์ตรวม</div><div class="big">${usd(val)}</div>
-  <div class="n" style="font-size:20px;margin-top:6px">${isFinite(fx)?thb(val*fx)+` <span style="font-size:13px;opacity:.75">ที่ ${fx.toFixed(2)} บาท/USD</span>`:'<span style="font-size:14px;opacity:.75">ยังไม่มีเรต USD/THB</span>'}</div>
+  <div class="n" style="font-size:20px;margin-top:6px">${isFinite(fx)?thb(val*fx)+` <span style="font-size:13px;opacity:.75">ที่ ${fx.toFixed(2)} บาท/USD · ${prices.fx?.src==='manual'?'กรอกเอง':'เรต'} ${esc(prices.fx?.rateDate||fdt(prices.fx?.at))}</span>`:'<span style="font-size:14px;opacity:.75">ยังไม่มีเรต USD/THB</span>'}</div>
   ${isFinite(lifeThb)&&txns.length?`<div style="margin-top:20px"><div style="font-size:14px;opacity:.8">กำไร/ขาดทุนทั้งหมดตั้งแต่เริ่ม (บาท)</div><div class="big" style="font-size:clamp(30px,5vw,44px)">${(lifeThb>0?'+':lifeThb<0?'−':'')+'฿'+Math.round(Math.abs(lifeThb)).toLocaleString('en-US')}</div><div style="font-size:13px;opacity:.75">มูลค่าพอร์ต ${thb(val*fx)} + ได้จากการขาย ${thb(gotThb)} − จ่ายซื้อ ${thb(paidThb)}${estN?` · ${estN} รายการไม่มียอดบาท ใช้เรตประมาณ`:''}</div></div>`:''}
   <div class="kv"><div><span>กำไร/ขาดทุน (ยังถือ)</span><b class="n">${sgn(un)} · ${pct(cost?un/cost:NaN)}</b></div><div><span>ต้นทุนรวม</span><b class="n">${usd(cost)}</b></div><div><span>กำไรที่ขายแล้ว</span><b class="n">${sgn(rz)}</b></div></div>
   ${missing?`<p class="note" style="color:inherit">${missing} ตัวยังไม่มีราคา จึงนับที่ราคาทุนไปก่อน</p>`:''}`;
@@ -367,11 +367,15 @@ async function save(id,d){const ref=id?doc(txCol(),id):doc(txCol());await setDoc
 async function saveMany(list){for(let i=0;i<list.length;i+=400){const b=writeBatch(fs);for(const x of list.slice(i,i+400)){const ref=x.id?doc(txCol(),x.id):doc(txCol());b.set(ref,{...x,id:ref.id})}await b.commit()}}
 async function del(id){await deleteDoc(doc(txCol(),id))}
 async function saveOvr(o){ovr=o;mergePrices();render();await setDoc(doc(fs,`users/${uid}/meta/overrides`),o)}
+/* เรต USD/THB สด: ดึงจาก Frankfurter (เรตอ้างอิงธนาคารกลาง อัปเดตวันละครั้ง) ตอนเปิดแอพและทุก 30 นาที */
+let liveFx=null,fxTimer=null;
+async function fetchLiveFx(){try{const r=await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=THB');const j=await r.json();const v=+j?.rates?.THB;
+  if(v>20&&v<60){liveFx={v,at:new Date().toISOString(),src:'live',rateDate:String(j.date||'')};mergePrices();render()}}catch(e){}}
 const newer=(a,b)=>!a?b:!b?a:(a.at||'')>=(b.at||'')?a:b;
 function mergePrices(){
   const p={};for(const s of new Set([...Object.keys(autoP),...Object.keys(ovr.p||{})]))p[s]=newer(autoP[s],ovr.p?.[s]);
   const ats=Object.values(autoP).map(x=>x.at||'').sort();
-  prices={p,fx:newer(autoFx,ovr.fx),at:ats[ats.length-1]||''};
+  prices={p,fx:newer(newer(autoFx,liveFx),ovr.fx),at:ats[ats.length-1]||''};
 }
 
 document.addEventListener('click',e=>{
@@ -396,6 +400,7 @@ const app=initializeApp(firebaseConfig),auth=getAuth(app);fs=getFirestore(app);
 onAuthStateChanged(auth,u=>{
   unsubs.forEach(f=>f());unsubs=[];txns=[];autoP={};autoFx=null;ovr={p:{},fx:null};settings={method:'fifo'};mergePrices();
   uid=u?.uid||null;$('#topActs').hidden=!u;
+  clearInterval(fxTimer);if(u){fetchLiveFx();fxTimer=setInterval(fetchLiveFx,30*60*1000)}
   if(!u){ready=false;render();$('#stamp').textContent='ล็อกอินเพื่อดูพอร์ตของคุณ';$('#list').innerHTML=`<form id="login" class="slip" style="max-width:380px;margin:0 auto;padding:22px"><h2 style="margin:0 0 14px">เข้าสู่ระบบ</h2><label class="note" for="lu">ชื่อผู้ใช้</label><input id="lu" autocomplete="username" autocapitalize="none" spellcheck="false" required><label class="note" for="lp" style="display:block;margin-top:10px">รหัสผ่าน</label><input id="lp" type="password" autocomplete="current-password" required><p class="err" id="ler"></p><button class="pri" style="width:100%">เข้าสู่ระบบ</button></form>`;return}
   ready=false;render();
   const fail=err=>{ready=true;render();$('#stamp').textContent=errMsg(err)};
