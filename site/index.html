@@ -96,7 +96,9 @@ const cls=x=>x>0?'up':x<0?'dn':'';
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok'});
 const fdt=s=>{try{return new Date(s).toLocaleString('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}catch(e){return''}};
 const EPS=1e-9;
-let fs=null,uid=null,autoP={},autoFx=null,ovr={p:{},fx:null},txns=[],prices={p:{},fx:null},settings={method:'fifo'},open=new Set(),ready=false,canWrite=true;
+/* เงินฝาก/ถอนรายปี เก็บใน Firestore ของผู้ใช้เท่านั้น (ห้ามใส่ตัวเลขจริงในโค้ด เพราะ repo เป็น public) */
+const FLOWS0={years:[],cash:null,cashAt:null};
+let flows=FLOWS0,fs=null,uid=null,autoP={},autoFx=null,ovr={p:{},fx:null},txns=[],prices={p:{},fx:null},settings={method:'fifo'},open=new Set(),ready=false,canWrite=true;
 
 function compute(list,method){
   const by={},ann={};
@@ -138,10 +140,15 @@ function render(){
   for(const x of txns){if(x.type==='split')continue;const amt=x.type==='buy'?x.qty*x.price+(+x.fee||0):x.qty*x.price-(+x.fee||0);
     let t=x.thb;if(!(t>=0)){t=amt*(+x.fx>0?+x.fx:fx);estN++}if(x.type==='buy')paidThb+=t;else gotThb+=t}
   const lifeThb=val*fx+gotThb-paidThb;
+  // กำไรจากเงินที่ลงจริง (USD) = มูลค่าหุ้น + เงินสดในบัญชี + ถอนออกทั้งหมด − ฝากเข้าทั้งหมด
+  const depT=flows.years.reduce((s,y)=>s+(+y.dep||0),0),wdT=flows.years.reduce((s,y)=>s+(+y.wd||0),0),cashU=+flows.cash||0;
+  const realUsd=val+cashU+wdT-depT,hasFlows=flows.years.length>0;
   $('#stamp').textContent=!ready?'กำลังโหลดข้อมูล…':(prices.at?'ราคาอัปเดต '+fdt(prices.at):'ยังไม่มีการอัปเดตราคา')+(settings.method==='avg'?' · คิดแบบต้นทุนเฉลี่ย':' · คิดแบบ FIFO');
   $('#tot').innerHTML=`<div style="font-size:14px;opacity:.8">มูลค่าพอร์ตรวม</div><div class="big">${usd(val)}</div>
   <div class="n" style="font-size:20px;margin-top:6px">${isFinite(fx)?thb(val*fx)+` <span style="font-size:13px;opacity:.75">ที่ ${fx.toFixed(2)} บาท/USD · ${prices.fx?.src==='manual'?'กรอกเอง '+fdt(prices.fx.at):prices.fx?.src==='market'?'เรตตลาด '+fdt(prices.fx.quoteTime||prices.fx.at):'เรตอ้างอิง '+esc(prices.fx?.rateDate||fdt(prices.fx?.at))}</span>`:'<span style="font-size:14px;opacity:.75">ยังไม่มีเรต USD/THB</span>'}</div>
-  ${isFinite(lifeThb)&&txns.length?`<div style="margin-top:20px"><div style="font-size:14px;opacity:.8">กำไร/ขาดทุนทั้งหมดตั้งแต่เริ่ม (บาท)</div><div class="big" style="font-size:clamp(30px,5vw,44px)">${(lifeThb>0?'+':lifeThb<0?'−':'')+'฿'+Math.round(Math.abs(lifeThb)).toLocaleString('en-US')}</div><div style="font-size:13px;opacity:.75">มูลค่าพอร์ต ${thb(val*fx)} + ได้จากการขาย ${thb(gotThb)} − จ่ายซื้อ ${thb(paidThb)}${estN?` · ${estN} รายการไม่มียอดบาท ใช้เรตประมาณ`:''}</div></div>`:''}
+  ${hasFlows&&txns.length?`<div style="margin-top:20px"><div style="font-size:14px;opacity:.8">กำไร/ขาดทุนจากเงินที่ลงจริง</div><div class="big" style="font-size:clamp(30px,5vw,44px)">${isFinite(fx)?(realUsd*fx>0?'+':realUsd<0?'−':'')+'฿'+Math.round(Math.abs(realUsd*fx)).toLocaleString('en-US'):sgn(realUsd)}</div><div style="font-size:13px;opacity:.75">${sgn(realUsd)} = หุ้น ${usd(val)} + เงินสด ${flows.cash==null?'<b>ยังไม่ได้ใส่</b>':usd(cashU)} + ถอนแล้ว ${usd(wdT)} − ฝาก ${usd(depT)}${isFinite(fx)?' · บาทคิดที่เรตปัจจุบัน':''}</div>${flows.cash==null?'<button class="lnk" data-a="flows" style="color:inherit">ใส่เงินสดคงเหลือในบัญชี Dime →</button>':''}</div>`:''}
+  ${!hasFlows&&txns.length?`<div style="margin-top:14px"><button class="lnk" data-a="flows" style="color:inherit;font-size:14px">ใส่ยอดฝากเข้า/ถอนออกรายปี เพื่อดูกำไรจากเงินที่ลงจริง →</button></div>`:''}
+  ${isFinite(lifeThb)&&txns.length?`<div style="margin-top:14px;font-size:14px"><span style="opacity:.8">กำไรจากการซื้อขาย (ไม่รวมปันผล/ค่าเงิน):</span> <b class="n">${(lifeThb>0?'+':lifeThb<0?'−':'')+'฿'+Math.round(Math.abs(lifeThb)).toLocaleString('en-US')}</b>${estN?` <span style="opacity:.7">(${estN} รายการใช้เรตประมาณ)</span>`:''}</div>`:''}
   <div class="kv"><div><span>กำไร/ขาดทุน (ยังถือ)</span><b class="n">${sgn(un)} · ${pct(cost?un/cost:NaN)}</b></div><div><span>ต้นทุนรวม</span><b class="n">${usd(cost)}</b></div><div><span>กำไรที่ขายแล้ว</span><b class="n">${sgn(rz)}</b></div></div>
   ${missing?`<p class="note" style="color:inherit">${missing} ตัวยังไม่มีราคา จึงนับที่ราคาทุนไปก่อน</p>`:''}`;
   $('#alloc').innerHTML=`<h2>สัดส่วนในพอร์ต</h2>`+(held.length?held.map(r=>{const v=isFinite(r.val)?r.val:r.cost,w=val?v/val:0;return`<div class="bar"><span class="n" title="${esc(symLabel(r.sym))}">${esc(r.sym.replace(/\d{6}[CP]\d{8}$/,'*'))}</span><i><b style="width:${(w*100).toFixed(1)}%"></b></i><span class="n">${(w*100).toFixed(1)}%</span></div>`}).join(''):'<p class="note">เพิ่มรายการซื้อแรก แล้วสัดส่วนจะแสดงที่นี่</p>');
@@ -261,15 +268,27 @@ function setModal(){
   const fx=prices.fx;
   show(`<h3>ตั้งค่า</h3><label class="note">วิธีคิดต้นทุนเมื่อขาย</label><div class="seg" id="sm"><button type="button" data-m="fifo" class="${settings.method==='fifo'?'on':''}">FIFO (ซื้อก่อน ขายก่อน)</button><button type="button" data-m="avg" class="${settings.method==='avg'?'on':''}">ต้นทุนเฉลี่ย</button></div>
   <p class="note">FIFO: ขายแล้วตัดล็อตที่ซื้อเก่าสุดก่อน ต้นทุนเฉลี่ยของที่เหลือจะเปลี่ยน · ต้นทุนเฉลี่ย: ขายแล้วต้นทุนเฉลี่ยคงเดิม</p>
+  <label class="note">เงินฝากเข้า / ถอนออก รายปี (USD) · จากรายงานเงินขาเข้า-ขาออกของ Dime: <b>ขาออกไทย = ฝาก</b>, <b>ขาเข้าไทย = ถอน</b></label>
+  <div id="fyl"></div><div class="acts" style="margin:6px 0 12px"><button type="button" class="ghost" id="fyAdd">+ เพิ่มปี</button></div>
+  <label for="scash" class="note">เงินสดคงเหลือในบัญชี Dime (USD) ${flows.cashAt?`· ใส่ล่าสุด ${fdt(flows.cashAt)}`:''}</label><input id="scash" inputmode="decimal" value="${flows.cash==null?'':esc(flows.cash)}" placeholder="ดูในแอพ Dime เช่น 125.40">
   <label for="sfx" class="note">เรต USD/THB ${fx?`(ล่าสุด ${fdt(fx.at)})`:''}</label><input id="sfx" inputmode="decimal" value="${fx?esc(fx.v):''}" placeholder="เช่น 33.50"><p class="err" id="ser"></p>
   <label class="note">สำรองและย้ายข้อมูล</label><div class="acts"><button type="button" class="ghost" id="sEx">ส่งออก JSON</button><button type="button" class="ghost" id="sIm">นำเข้า JSON</button><button type="button" class="ghost" id="sOut">ออกจากระบบ</button></div><p class="note">ล็อกอินเป็น ${esc((auth.currentUser?.email||'').replace(/@dime\.com$/,''))}</p>
   <div class="mf"><button class="ghost" id="s0">ยกเลิก</button><button class="pri" id="s1">บันทึก</button></div>`);
   $('#sEx').onclick=exportJson;$('#sIm').onclick=()=>{$('#jsonIn').value='';$('#jsonIn').click()};$('#sOut').onclick=()=>{hide();signOut(auth)};
+  let fy=flows.years.map(y=>({...y}));
+  const drawFy=()=>{$('#fyl').innerHTML=`<div class="scroll"><table><thead><tr><th>ปี (ค.ศ.)</th><th class="r">ฝากเข้า</th><th class="r">ถอนออก</th><th></th></tr></thead><tbody>${fy.map((y,i)=>`<tr><td><input data-fy="${i}" data-k="year" value="${esc(y.year)}" inputmode="numeric" style="width:80px;min-height:36px"></td><td class="r"><input data-fy="${i}" data-k="dep" value="${esc(y.dep)}" inputmode="decimal" style="width:110px;min-height:36px;text-align:right"></td><td class="r"><input data-fy="${i}" data-k="wd" value="${esc(y.wd)}" inputmode="decimal" style="width:110px;min-height:36px;text-align:right"></td><td><button type="button" class="lnk" data-fyd="${i}">ลบ</button></td></tr>`).join('')}</tbody></table></div>`};
+  drawFy();
+  $('#fyl').oninput=e=>{const t=e.target;if(t.dataset.fy==null)return;fy[+t.dataset.fy][t.dataset.k]=num(t.value)};
+  $('#fyl').onclick=e=>{const d=e.target.dataset.fyd;if(d!=null){fy.splice(+d,1);drawFy()}};
+  $('#fyAdd').onclick=()=>{fy.push({year:new Date().getFullYear(),dep:0,wd:0});drawFy()};
   let m=settings.method;
   $('#sm').onclick=e=>{const b=e.target.closest('button');if(!b)return;m=b.dataset.m;$('#sm').querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===b))};
   $('#s0').onclick=hide;
   $('#s1').onclick=async()=>{try{
     if(m!==settings.method){settings={...settings,method:m};render();await setDoc(doc(fs,`users/${uid}/meta/settings`),settings)}
+    const cashIn=$('#scash').value.trim(),cash=cashIn===''?null:num(cashIn);
+    const nf={years:fy.filter(y=>y.year>1990&&(y.dep>=0||y.wd>=0)).map(y=>({year:+y.year,dep:+y.dep||0,wd:+y.wd||0})).sort((a,b)=>a.year-b.year),cash:isFinite(cash)?cash:null,cashAt:isFinite(cash)&&cash!==flows.cash?new Date().toISOString():flows.cashAt};
+    if(JSON.stringify(nf)!==JSON.stringify(flows)){flows=nf;render();await setDoc(doc(fs,`users/${uid}/meta/flows`),nf)}
     const v=num($('#sfx').value);if(v>0&&v!==+fx?.v)await saveOvr({...ovr,fx:{v,at:new Date().toISOString(),src:'manual'}});hide()}catch(e){$('#ser').textContent=errMsg(e)}};
 }
 
@@ -384,6 +403,7 @@ document.addEventListener('click',e=>{
   const b=e.target.closest('[data-a]');if(!b||md.contains(b))return;const s=b.dataset.s,a=b.dataset.a;
   if(a==='det'){open.has(s)?open.delete(s):open.add(s);render()}
   else if(a==='avg')avgModal(s);else if(a==='px')pxModal(s);else if(a==='add')txForm({},s?{sym:s}:{});
+  else if(a==='flows')setModal();
   else if(a==='edit'){const x=txns.find(z=>z.id===b.dataset.id);if(x)txForm(x)}
 });
 $('#bAdd').onclick=()=>txForm();
@@ -410,6 +430,7 @@ onAuthStateChanged(auth,u=>{
   unsubs.push(onSnapshot(collection(fs,'prices'),s=>{autoP={};s.docs.forEach(d=>{const v=d.data();if(isFinite(+v.v))autoP[d.id]={...v,src:'auto'}});mergePrices();render()},fail));
   unsubs.push(onSnapshot(doc(fs,'fx/USDTHB'),s=>{autoFx=s.exists()?{src:'auto',...s.data()}:null;mergePrices();render()},fail));
   unsubs.push(onSnapshot(doc(fs,`users/${uid}/meta/overrides`),s=>{ovr=s.exists()?{p:{},...s.data()}:{p:{},fx:null};mergePrices();render()},fail));
+  unsubs.push(onSnapshot(doc(fs,`users/${uid}/meta/flows`),s=>{flows=s.exists()?{...FLOWS0,...s.data()}:FLOWS0;render()},fail));
   unsubs.push(onSnapshot(doc(fs,`users/${uid}/meta/settings`),s=>{if(s.exists())settings={method:'fifo',...s.data()};render()},fail));
 });
 }
