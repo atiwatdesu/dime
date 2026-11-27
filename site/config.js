@@ -9,4 +9,4 @@ export const firebaseConfig = {
 };
 
 // URL ของ news worker บน Cloudflare (ได้หลัง deploy เช่น https://dime-news.<ชื่อ>.workers.dev) ว่างไว้ = กดชื่อหุ้นแล้วเปิด Yahoo Finance
-export const newsApi = '';
+export const newsApi = 'https://dime-news.atiwatdesu.workers.dev';

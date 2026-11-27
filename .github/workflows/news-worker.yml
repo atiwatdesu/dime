@@ -22,3 +22,7 @@ jobs:
         env:
           FINNHUB_KEY: ${{ secrets.FINNHUB_KEY }}
       - run: echo "Worker URL → ${{ steps.wrangler.outputs.deployment-url }}"
+      - name: Smoke test (generic symbol, counts only)
+        run: |
+          sleep 5
+          curl -s -H "Origin: https://atiwatdesu.github.io" "${{ steps.wrangler.outputs.deployment-url }}/?symbol=AAPL" | jq -c '{sources, items: (.items | length), newest: (.items[0].time / 1000 | todate)}'
