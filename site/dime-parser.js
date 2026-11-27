@@ -47,7 +47,10 @@ export function parseDime(lines){
   const eff=full.match(/Effective\s*Date\s*(?:\S+\s*){0,6}?(\d{1,2}\/\d{1,2}\/\d{4})/i);
   const N='(\\d[\\d,]*(?:\\.\\d+)?)';
   // เรต THB/USD ของใบยืนยันฉบับนี้ (ยอดบาททุกแถว = ยอด USD × เรตนี้)
-  const fxm=full.match(/(?:THB\s*\/\s*USD|USD\s*\/\s*THB|Exchange\s*Rate|อัตราแลกเปลี่ยน)[^\d]{0,60}?(\d{2}\.\d{2,6})/i),docFx=fxm&&+fxm[1]>20&&+fxm[1]<60?+fxm[1]:null;
+  const fxm=full.match(/(?:THB\s*\/\s*USD|USD\s*\/\s*THB|Exchange\s*Rate|อัตราแลกเปลี่ยน)[^\d]{0,60}?(\d{2}\.\d{2,6})/i),docFx0=fxm&&+fxm[1]>20&&+fxm[1]<60?+fxm[1]:null;
+  // สำรอง: เรตในใบยืนยันเป็นทศนิยม 4 ตำแหน่งในช่วง 25–45 (ราคา/ยอดเงินเป็น 2 ตำแหน่ง จำนวนหุ้นเป็น 7 ตำแหน่ง)
+  const fxCand=[...new Set((full.match(/(?<![\d.,])\d{2}\.\d{4}(?![\d])/g)||[]).map(Number).filter(v=>v>=25&&v<=45))];
+  const docFx=docFx0||(fxCand.length===1?fxCand[0]:null);
   const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z.\\-]{0,9}?)(\\d{6}[CP]\\d{8})?\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}(?:\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+${N}\\s+${N})?`,'g');
   const out=[],seen=new Set();let m;
   while((m=re.exec(full))){

@@ -67,7 +67,7 @@ for (const d of docs) {
     for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); pages.push({ items: (await pg.getTextContent()).items, vp: pg.getViewport({ scale: 1 }) }); }
     const lines = linesFromPages(pages); redacted += lines.dropped || 0;
     const rows = parseDime(lines);
-    if (DEBUG && !rows.some(r => r.thb != null) && shown.fx < 2) { shown.fx++; console.log(`\n== ไม่พบเรต ${d.when}: บรรทัดที่มีคำว่า rate/THB/USD/อัตรา ==`); lines.filter(l => /rate|THB|USD|อัตรา|แลกเปลี่ยน/i.test(l)).forEach(l => console.log('  ' + shape(l))); }
+    if (DEBUG && !rows.some(r => r.thb != null) && shown.fx < 2) { shown.fx++; console.log(`\n== ไม่พบเรต ${d.when}: ตัวเลขทศนิยม 4 ตำแหน่งช่วง 25–45 มี ${new Set((lines.join(' ').match(/(?<![\d.,])\d{2}\.\d{4}(?![\d])/g) || []).map(Number).filter(v => v >= 25 && v <= 45)).size} ค่า ==`); lines.filter(l => /rate|THB|USD|อัตรา|แลกเปลี่ยน/i.test(l)).forEach(l => console.log('  ' + shape(l))); }
     for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]{2,8})\b/g)) if (!/^(BUY|SELL?|REW|EXC|EXP)$/.test(m[2])) failed.push(`${d.when}: มีรายการประเภท ${m[2]} (วันที่ ${m[1]}) ยังไม่ได้บันทึก ต้องตรวจเอง`);
     if (DEBUG) for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+([A-Za-z]{2,8})\b/g)) typeCodes.set(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)'), (typeCodes.get(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)')) || 0) + 1);
     if (DEBUG && (rows.length ? shown.ok < 1 : shown.bad < 3)) {
