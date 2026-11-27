@@ -133,9 +133,15 @@ function render(){
   const missing=held.filter(r=>!isFinite(r.px)).length;
   const val=held.reduce((s,r)=>s+(isFinite(r.val)?r.val:r.cost),0),cost=held.reduce((s,r)=>s+r.cost,0),un=val-cost,rz=rows.reduce((s,r)=>s+r.realized,0);
   const fx=+prices.fx?.v;
+  // กำไรทั้งหมดตั้งแต่เริ่ม (บาท) = มูลค่าพอร์ตตอนนี้ (บาท) + เงินบาทที่ได้จากการขาย − เงินบาทที่จ่ายซื้อ
+  let paidThb=0,gotThb=0,estN=0;
+  for(const x of txns){if(x.type==='split')continue;const amt=x.type==='buy'?x.qty*x.price+(+x.fee||0):x.qty*x.price-(+x.fee||0);
+    let t=x.thb;if(!(t>=0)){t=amt*(+x.fx>0?+x.fx:fx);estN++}if(x.type==='buy')paidThb+=t;else gotThb+=t}
+  const lifeThb=val*fx+gotThb-paidThb;
   $('#stamp').textContent=!ready?'กำลังโหลดข้อมูล…':(prices.at?'ราคาอัปเดต '+fdt(prices.at):'ยังไม่มีการอัปเดตราคา')+(settings.method==='avg'?' · คิดแบบต้นทุนเฉลี่ย':' · คิดแบบ FIFO');
   $('#tot').innerHTML=`<div style="font-size:14px;opacity:.8">มูลค่าพอร์ตรวม</div><div class="big">${usd(val)}</div>
   <div class="n" style="font-size:20px;margin-top:6px">${isFinite(fx)?thb(val*fx)+` <span style="font-size:13px;opacity:.75">ที่ ${fx.toFixed(2)} บาท/USD</span>`:'<span style="font-size:14px;opacity:.75">ยังไม่มีเรต USD/THB</span>'}</div>
+  ${isFinite(lifeThb)&&txns.length?`<div style="margin-top:20px"><div style="font-size:14px;opacity:.8">กำไร/ขาดทุนทั้งหมดตั้งแต่เริ่ม (บาท)</div><div class="big" style="font-size:clamp(30px,5vw,44px)">${(lifeThb>0?'+':lifeThb<0?'−':'')+'฿'+Math.round(Math.abs(lifeThb)).toLocaleString('en-US')}</div><div style="font-size:13px;opacity:.75">มูลค่าพอร์ต ${thb(val*fx)} + ได้จากการขาย ${thb(gotThb)} − จ่ายซื้อ ${thb(paidThb)}${estN?` · ${estN} รายการไม่มียอดบาท ใช้เรตประมาณ`:''}</div></div>`:''}
   <div class="kv"><div><span>กำไร/ขาดทุน (ยังถือ)</span><b class="n">${sgn(un)} · ${pct(cost?un/cost:NaN)}</b></div><div><span>ต้นทุนรวม</span><b class="n">${usd(cost)}</b></div><div><span>กำไรที่ขายแล้ว</span><b class="n">${sgn(rz)}</b></div></div>
   ${missing?`<p class="note" style="color:inherit">${missing} ตัวยังไม่มีราคา จึงนับที่ราคาทุนไปก่อน</p>`:''}`;
   $('#alloc').innerHTML=`<h2>สัดส่วนในพอร์ต</h2>`+(held.length?held.map(r=>{const v=isFinite(r.val)?r.val:r.cost,w=val?v/val:0;return`<div class="bar"><span class="n" title="${esc(symLabel(r.sym))}">${esc(r.sym.replace(/\d{6}[CP]\d{8}$/,'*'))}</span><i><b style="width:${(w*100).toFixed(1)}%"></b></i><span class="n">${(w*100).toFixed(1)}%</span></div>`}).join(''):'<p class="note">เพิ่มรายการซื้อแรก แล้วสัดส่วนจะแสดงที่นี่</p>');
@@ -207,6 +213,7 @@ function txForm(x={},pre={}){
     if(cur==='THB'&&!(o.rt>0)){$('#fer').textContent='ใส่เรตเงินบาท (บาท ต่อ 1 USD)';return}
     const d={sym:$('#fs').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,''),type,date:$('#fd').value,qty:o.q,price:+o.price.toFixed(6),fee:+o.fee.toFixed(4),cur};
     if(cur==='THB')Object.assign(d,{fx:o.rt,priceThb:o.pIn,feeThb:o.fIn});
+    if(x.thb!=null&&d.type===x.type&&Math.abs(d.qty-x.qty)<1e-9&&Math.abs(d.price-x.price)<1e-6&&Math.abs(d.fee-(+x.fee||0))<1e-6){d.thb=x.thb;if(x.ref)d.ref=x.ref}
     if(!d.sym||!(d.qty>0)||!(d.price>0)||!d.date){$('#fer').textContent='กรอกหุ้น วันที่ จำนวน และราคาให้ครบ (จำนวนและราคาต้องมากกว่า 0)';return}
     try{await save(x.id,{...d,t:x.t||Date.now(),src:x.src||'manual'});open.add(d.sym);hide()}catch(err){$('#fer').textContent=errMsg(err)}};
 }
@@ -332,7 +339,7 @@ $('#pdfIn').onchange=async e=>{
     $('#i1').onclick=async ev=>{
       const rows=[];
       for(const c of md.querySelectorAll('input[data-c]:checked')){const i=c.dataset.c,g=k=>md.querySelector(`[data-i="${i}"][data-k="${k}"]`).value;
-        const t={sym:g('sym').trim().toUpperCase(),type:g('type'),date:g('date').trim(),qty:num(g('qty')),price:num(g('price')),fee:num(g('fee'))||0,cur:'USD',...(list[i].ref?{ref:list[i].ref}:{})};
+        const t={sym:g('sym').trim().toUpperCase(),type:g('type'),date:g('date').trim(),qty:num(g('qty')),price:num(g('price')),fee:num(g('fee'))||0,cur:'USD',...(list[i].ref?{ref:list[i].ref}:{}),...(list[i].thb!=null&&+g('qty')===list[i].qty?{thb:list[i].thb}:{})};
         if(!t.sym||!/^\d{4}-\d\d-\d\d$/.test(t.date)||!(t.qty>0)||!(t.price>=0)){$('#ier').textContent=`แถวที่ ${+i+1} ข้อมูลไม่ครบ (วันที่ต้องเป็น YYYY-MM-DD)`;return}rows.push(t)}
       ev.target.disabled=true;
       try{await saveMany(rows.map((t,n)=>({...t,t:Date.now()+n,src:'pdf:'+file.name.slice(0,80)})));rows.forEach(t=>open.add(t.sym));hide()}catch(err){$('#ier').textContent=errMsg(err);ev.target.disabled=false}};

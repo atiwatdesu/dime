@@ -84,6 +84,8 @@ for (const d of docs) {
     failed.push(`${d.when}: ${e?.name === 'PasswordException' ? 'รหัส PDF ไม่ถูกต้อง' : 'เปิดไฟล์ไม่ได้'}`);
   }
 }
+const withThb = [...trades.values()].filter(t => t.thb != null).length;
+say(`💱 มียอดบาทตามใบยืนยัน ${withThb}/${trades.size} รายการ`);
 say(`📄 อ่านสำเร็จ ${pdfOk}/${docs.length} ไฟล์ · พบ ${trades.size} รายการ · ตัดข้อมูลส่วนตัวทิ้ง ${redacted} จุด`);
 
 // ---------- 3) บันทึกลง Firestore ----------
@@ -109,7 +111,7 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
   for (const t of trades.values()) {
     if (refs.has(t.ref)) { skipped++; continue; }
     if (manual.has(fp(t))) { maybeDup++; continue; }
-    toWrite.push({ sym: t.sym, type: t.type, date: t.date, qty: t.qty, price: t.price, fee: t.fee, cur: 'USD', ref: t.ref, t: /-OPT$/.test(t.ref) ? 9e15 : (Number(t.ref.replace(/\D/g, '')) || 1), src: 'gmail', ...(t.note ? { note: t.note } : {}) });
+    toWrite.push({ sym: t.sym, type: t.type, date: t.date, qty: t.qty, price: t.price, fee: t.fee, cur: 'USD', ref: t.ref, t: /-OPT$/.test(t.ref) ? 9e15 : (Number(t.ref.replace(/\D/g, '')) || 1), src: 'gmail', ...(t.note ? { note: t.note } : {}), ...(t.thb != null ? { thb: t.thb } : {}) });
   }
   // ออปชันที่เลยวันหมดอายุแล้วแต่ยังค้าง (ไม่มีรายการใช้สิทธิ/หมดอายุ) → ปิดที่ 0 ในวันหมดอายุ
   const today = new Date().toISOString().slice(0, 10);
