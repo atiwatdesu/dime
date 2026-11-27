@@ -160,7 +160,7 @@ async function newsModal(sym){
     const j=await r.json();if(!$('#nl'))return;
     const ok=Object.entries(j.sources||{}).filter(([,v])=>v==='ok').map(([k])=>k),bad=Object.entries(j.sources||{}).filter(([,v])=>v!=='ok').map(([k])=>k);
     const items=(j.items||[]).filter(n=>/^https:\/\//.test(n.url)),sm=j.summary;
-    const aiNote=j.ai==='ok'?'จัดระดับโดย AI':j.ai==='quota'?'โควตา AI วันนี้หมด ใช้การจัดระดับจากคำสำคัญ':'จัดระดับจากคำสำคัญ';
+    const aiNote=j.ai==='ok'?'จัดระดับโดย AI':j.ai==='partial'?'จัดระดับโดย AI (บางข่าวใช้คำสำคัญ)':j.ai==='quota'?'โควตา AI วันนี้หมด ใช้การจัดระดับจากคำสำคัญ':'จัดระดับจากคำสำคัญ';
     $('#nst').textContent=`${items.length} ข่าว จาก ${ok.join(', ')||'—'}${bad.length?` · ดึงไม่ได้: ${bad.join(', ')}`:''} · ${aiNote} · อัปเดต ${fdt(j.fetchedAt)}`;
     const IMP=n=>n>=4?['🔴','สำคัญมาก']:n===3?['🟡','สำคัญปานกลาง']:['⚪','ทั่วไป'],DIR={pos:['🟢','บวก'],neg:['🔻','ลบ'],neu:['➖','กลาง']};
     let mode='imp',onlyHigh=false;

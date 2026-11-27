@@ -141,31 +141,36 @@ async function enrich(items, sym, env, ctx) {
   }));
   if (!todo.length) return 'ok';
   if (!env.AI) return 'off';
-  try {
-    const list = todo.map((it, i) => `${i}. ${it.title}`).join('\n');
+  // ส่งเป็นชุดละ 10 หัวข้อพร้อมกัน (คำตอบสั้น ไม่ถูกตัด) และอ่านผลทีละรายการ แม้ JSON ไม่ครบก็ยังใช้ส่วนที่ได้
+  const runChunk = async chunk => {
+    const list = chunk.map((it, i) => `${i}. ${it.title}`).join('\n');
     const res = await withTimeout(env.AI.run(AI_MODEL, {
       messages: [
         { role: 'system', content: `You rate news headlines for a retail investor holding the US stock ${sym}. For each numbered headline return: imp = importance to ${sym} shareholders 1-5 (5 = earnings, guidance, offering/dilution, splits, M&A, FDA, lawsuits, delisting; 3 = analyst rating/price target, contracts, insider trades; 1 = generic market chatter or barely about ${sym}); dir = expected effect on ${sym} for shareholders: "pos", "neg" or "neu"; th = natural Thai translation of the headline (keep tickers and company names in English). Reply with ONLY a JSON array like [{"i":0,"imp":4,"dir":"pos","th":"..."}].` },
         { role: 'user', content: list },
       ],
-      max_tokens: 2500,
+      max_tokens: 1500,
       temperature: 0.1,
-    }), 20000);
+    }), 25000);
     const text = typeof res?.response === 'string' ? res.response : JSON.stringify(res?.response ?? '');
-    const arr = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
     let n = 0;
-    for (const r of Array.isArray(arr) ? arr : []) {
-      const it = todo[+r.i]; if (!it) continue;
+    for (const m of text.matchAll(/\{[^{}]*\}/g)) {
+      let r; try { r = JSON.parse(m[0]); } catch { continue; }
+      const it = chunk[+r.i]; if (!it) continue;
       const imp = Math.min(5, Math.max(1, Math.round(+r.imp || 0))), dir = ['pos', 'neg', 'neu'].includes(r.dir) ? r.dir : null;
       if (!imp || !dir) continue;
       const tag = { imp, dir, th: String(r.th || it.th || '').slice(0, 300) };
       Object.assign(it, tag, { by: 'ai' }); n++;
       ctx.waitUntil(cache.put(keyOf(it), new Response(JSON.stringify(tag), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=604800' } })));
     }
-    return n ? 'ok' : 'fallback';
-  } catch (e) {
-    return /4006|quota|neurons|limit|429/i.test(String(e?.message || e)) ? 'quota' : 'fallback';
-  }
+    return n;
+  };
+  const chunks = []; for (let i = 0; i < todo.length; i += 10) chunks.push(todo.slice(i, i + 10));
+  const out = await Promise.allSettled(chunks.map(runChunk));
+  const done = out.reduce((a, r) => a + (r.status === 'fulfilled' ? r.value : 0), 0);
+  if (done) return done === todo.length ? 'ok' : 'partial';
+  const err = out.map(r => String(r.reason?.message || r.reason || '')).join(' ');
+  return /4006|quota|neurons|limit|429/i.test(err) ? 'quota' : 'fallback';
 }
 
 function summarize(items) {
