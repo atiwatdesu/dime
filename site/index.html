@@ -121,7 +121,9 @@ function compute(list,method){
       }
     }
     const qty=lots.reduce((s,L)=>s+L.q,0),cost=lots.reduce((s,L)=>s+L.q*L.c,0);
-    out.push({sym,qty:qty<EPS?0:qty,cost,avg:qty>EPS?cost/qty:NaN,realized,tx:by[sym]});
+    // เศษหุ้นต่ำกว่า 0.000001 จากการปัดเศษ ถือว่าขายหมดแล้ว
+    const dust=qty<1e-6;
+    out.push({sym,qty:dust?0:qty,cost:dust?0:cost,avg:qty>EPS?cost/qty:NaN,realized,tx:by[sym]});
   }
   return{rows:out,ann};
 }

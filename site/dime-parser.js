@@ -54,7 +54,9 @@ export function parseDime(lines){
   const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z.\\-]{0,9}?)(\\d{6}[CP]\\d{8})?\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}(?:\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+${N}\\s+${N})?`,'g');
   const out=[],seen=new Set();let m;
   while((m=re.exec(full))){
-    const [,id,settle,tp,base,occ]=m,[q,up,gross,fee,,total]=m.slice(6,12).map(x=>+x.replace(/,/g,''));
+    const [,id,settle,tp,base,occ]=m,[q,up,gross,fee]=m.slice(6,10).map(x=>+x.replace(/,/g,''));
+    // ยอดรวมคำนวณเอง (ลำดับคอลัมน์ในข้อความ PDF ไม่แน่นอน): ซื้อ = ยอดเงิน + ค่าธรรมเนียม, ขาย = ยอดเงิน − ค่าธรรมเนียม
+    const total=/^SEL/.test(tp)?gross-fee:gross+fee;
     // ยอดบาทตามใบยืนยัน (บรรทัด THB): ใช้เมื่อเรตที่ได้อยู่ในช่วงสมเหตุสมผล
     const thbTotal=m[15]?+m[15].replace(/,/g,''):NaN,rate=thbTotal/total;
     const thb=total>0&&rate>20&&rate<60&&(!docFx||Math.abs(rate-docFx)<.05)?+thbTotal.toFixed(2):docFx&&total>=0?+(total*docFx).toFixed(2):null;

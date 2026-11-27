@@ -104,13 +104,14 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
   let uid;
   try { uid = (await getAuth().getUserByEmail(env.APP_USER_EMAIL)).uid; } catch { say('❌ ไม่พบบัญชีผู้ใช้ใน Firebase Authentication'); done(1); }
   const col = db.collection(`users/${uid}/txns`);
-  const existing = (await col.get()).docs.map(d => d.data());
+  const exDocs = (await col.get()).docs, existing = exDocs.map(d => d.data());
+  const refDoc = new Map(exDocs.filter(d => d.data().ref).map(d => [d.data().ref, d]));
   const refs = new Set(existing.map(x => x.ref).filter(Boolean));
   const fp = x => `${x.sym}|${x.type}|${x.date}|${(+x.qty).toFixed(4)}`;
   const manual = new Set(existing.filter(x => !x.ref && x.type !== 'split').map(fp));
-  const toWrite = [];
+  const toWrite = [], fixThb = [];
   for (const t of trades.values()) {
-    if (refs.has(t.ref)) { skipped++; continue; }
+    if (refs.has(t.ref)) { skipped++; const ed = refDoc.get(t.ref); if (ed && t.thb != null && Math.abs((+ed.data().thb || 0) - t.thb) > 0.005) fixThb.push([ed.ref, t.thb]); continue; }
     if (manual.has(fp(t))) { maybeDup++; continue; }
     toWrite.push({ sym: t.sym, type: t.type, date: t.date, qty: t.qty, price: t.price, fee: t.fee, cur: 'USD', ref: t.ref, t: /-OPT$/.test(t.ref) ? 9e15 : (Number(t.ref.replace(/\D/g, '')) || 1), src: 'gmail', ...(t.note ? { note: t.note } : {}), ...(t.thb != null ? { thb: t.thb } : {}) });
   }
@@ -132,6 +133,7 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
     toWrite.push({ sym: s.sym, type: 'split', date: s.date, from: s.from, to: s.to, ratio: s.to / s.from, qty: 0, price: 0, fee: 0, t: 0, ref, src: 'splits.json' }); splitAdd++;
   }
   if (!DRY) {
+    for (let i = 0; i < fixThb.length; i += 400) { const b = db.batch(); for (const [ref, thb] of fixThb.slice(i, i + 400)) b.update(ref, { thb }); await b.commit(); }
     for (let i = 0; i < toWrite.length; i += 400) {
       const b = db.batch();
       for (const x of toWrite.slice(i, i + 400)) b.set(col.doc(x.ref), { ...x, id: x.ref });
@@ -139,7 +141,7 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
     }
   }
   written = toWrite.length;
-  say(`${DRY ? '🧪 ทดลองรัน (ยังไม่บันทึก)' : '💾 บันทึกแล้ว'}: รายการใหม่ ${written - splitAdd - expired} · แตกพาร์ ${splitAdd} · ปิดออปชันที่หมดอายุ ${expired} · มีอยู่แล้ว ${skipped} · ข้ามเพราะอาจซ้ำกับที่กรอกเอง ${maybeDup}`);
+  say(`${DRY ? '🧪 ทดลองรัน (ยังไม่บันทึก)' : '💾 บันทึกแล้ว'}: รายการใหม่ ${written - splitAdd - expired} · แตกพาร์ ${splitAdd} · ปิดออปชันที่หมดอายุ ${expired} · มีอยู่แล้ว ${skipped} (แก้ยอดบาท ${fixThb.length}) · ข้ามเพราะอาจซ้ำกับที่กรอกเอง ${maybeDup}`);
 }
 if (DEBUG) say(`🔤 รหัสประเภทรายการที่เจอ: ${[...typeCodes].map(([k, v]) => `${k}×${v}`).join(', ')}`);
 if (failed.length) { say(`\n⚠️ อ่านไม่ได้ ${failed.length} ไฟล์:`); failed.forEach(f => say(`- ${f}`)); }
