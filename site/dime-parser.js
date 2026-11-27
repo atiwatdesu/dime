@@ -34,19 +34,33 @@ export function linesFromPages(pages){
 /* Dime! Confirmation Note parser (Order History table).
    Row: OrderID  SettleDate  BUY|SELL|REW  SYMBOL [EXCH]  Unit  UnitPrice  USD  Gross  FeeInclVat  WHT  Total
    Unit price on the note is rounded to 2 dp, so price = Gross / Unit. Trade date = Effective Date. */
+// OCC option symbol: ROOT + YYMMDD + C|P + strike×1000 (8 digits), e.g. NVTS250912C00005500
+export function parseOcc(sym){
+  const m=/^([A-Z][A-Z.]{0,5})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(sym||'');
+  return m?{root:m[1],exp:`20${m[2]}-${m[3]}-${m[4]}`,cp:m[5],strike:+m[6]/1000}:null;
+}
+export function symLabel(sym){const o=parseOcc(sym);return o?`${o.root} ${o.exp.slice(8,10)}/${o.exp.slice(5,7)}/${o.exp.slice(2,4)} ${o.cp==='C'?'Call':'Put'} $${o.strike}`:sym}
 export function parseDime(lines){
   const full=lines.join(' ').replace(/\s+/g,' ');
   if(!/Dime|Confirmation Note|Order History/i.test(full))return[];
   const dmy=s=>{const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?ymd(+m[3],+m[2],+m[1]):''};
   const eff=full.match(/Effective\s*Date\s*(?:\S+\s*){0,6}?(\d{1,2}\/\d{1,2}\/\d{4})/i);
   const N='(\\d[\\d,]*(?:\\.\\d+)?)';
-  const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z.\\-]{0,9}?)(?:\\d[0-9A-Z]{5,})?\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}`,'g');
+  const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z.\\-]{0,9}?)(\\d{6}[CP]\\d{8})?\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}`,'g');
   const out=[],seen=new Set();let m;
   while((m=re.exec(full))){
-    const [,id,settle,tp,sym]=m,[q,up,gross,fee]=m.slice(5,9).map(x=>+x.replace(/,/g,''));
+    const [,id,settle,tp,base,occ]=m,[q,up,gross,fee]=m.slice(6,10).map(x=>+x.replace(/,/g,''));
     if(seen.has(id)||!(q>0))continue;seen.add(id);
-    if(!/^(BUY|SELL|SEL|REW)$/.test(tp)){(out.other||=[]).push({code:tp,date:dmy(settle)});continue}
-    out.push({sym,type:/^SEL/.test(tp)?'sell':'buy',date:(eff&&dmy(eff[1]))||dmy(settle),qty:q,price:gross>0?+(gross/q).toFixed(6):up,fee,ref:'DIME-'+id,note:tp==='REW'?'หุ้นรางวัล':''});
+    const date=(eff&&dmy(eff[1]))||dmy(settle),ref='DIME-'+id,opt=occ?parseOcc(base+occ):null,sym=opt?base+occ:base;
+    if(tp==='EXC'||tp==='EXP'){
+      if(!opt){(out.other||=[]).push({code:tp,date:dmy(settle)});continue}
+      // ปิดสัญญาออปชันที่มูลค่า 0 (ค่าพรีเมียมที่จ่ายไปกลายเป็นขาดทุนที่รับรู้แล้ว)
+      out.push({sym,type:'sell',date,qty:q,price:0,fee:0,ref:ref+'-OPT',note:tp==='EXC'?'ใช้สิทธิออปชัน':'ออปชันหมดอายุ'});
+      // ใช้สิทธิ: Call = ซื้อหุ้น, Put = ขายหุ้น จำนวน 100 หุ้นต่อสัญญา ที่ราคาใช้สิทธิ
+      if(tp==='EXC')out.push({sym:opt.root,type:opt.cp==='C'?'buy':'sell',date,qty:q*100,price:gross>0?+(gross/(q*100)).toFixed(6):opt.strike,fee,ref,note:`ใช้สิทธิ ${symLabel(sym)}`});
+      continue;
+    }
+    out.push({sym,type:/^SEL/.test(tp)?'sell':'buy',date,qty:q,price:gross>0?+(gross/q).toFixed(6):up,fee,ref,note:tp==='REW'?'หุ้นรางวัล':opt?'ออปชัน (ราคาต่อสัญญา)':''});
   }
   return out;
 }

@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pdfjs from 'pdfjs-dist/legacy/build/pdf.js';
-import { linesFromPages, parseDime } from '../site/dime-parser.js';
+import { linesFromPages, parseDime, parseOcc } from '../site/dime-parser.js';
 
 const env = process.env;
 const DRY = (env.DRY_RUN ?? 'true') !== 'false';
@@ -67,7 +67,7 @@ for (const d of docs) {
     for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); pages.push({ items: (await pg.getTextContent()).items, vp: pg.getViewport({ scale: 1 }) }); }
     const lines = linesFromPages(pages); redacted += lines.dropped || 0;
     const rows = parseDime(lines);
-    for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]{2,8})\b/g)) if (!/^(BUY|SELL?|REW)$/.test(m[2])) failed.push(`${d.when}: มีรายการประเภท ${m[2]} (วันที่ ${m[1]}) ยังไม่ได้บันทึก ต้องตรวจเอง`);
+    for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]{2,8})\b/g)) if (!/^(BUY|SELL?|REW|EXC|EXP)$/.test(m[2])) failed.push(`${d.when}: มีรายการประเภท ${m[2]} (วันที่ ${m[1]}) ยังไม่ได้บันทึก ต้องตรวจเอง`);
     if (DEBUG) for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+([A-Za-z]{2,8})\b/g)) typeCodes.set(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)'), (typeCodes.get(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)')) || 0) + 1);
     if (DEBUG && (rows.length ? shown.ok < 1 : shown.bad < 3)) {
       rows.length ? shown.ok++ : shown.bad++;
@@ -76,6 +76,7 @@ for (const d of docs) {
       console.log(`\n===== ${rows.length ? 'OK' : 'FAIL'} ${d.when} · หน้า ${pages.length} · items ${pages.reduce((a, p) => a + p.items.length, 0)} · ตัดทิ้ง ${lines.dropped} · แถวที่อ่านได้ถ้าไม่ตัด = ${rawRows} =====`);
       lines.forEach(l => console.log('  ' + shape(l)));
     }
+    (rows.other || []).forEach(o => failed.push(`${d.when}: มีรายการ ${o.code} ที่ไม่ใช่ออปชัน (วันที่ ${o.date}) ยังไม่ได้บันทึก ต้องตรวจเอง`));
     if (!rows.length && rows.other?.length) continue;
     if (!rows.length) { failed.push(`${d.when}: อ่านตารางรายการไม่ได้ (รูปแบบ PDF อาจต่างจากที่รู้จัก)`); continue; }
     rows.forEach(r => trades.set(r.ref, r)); pdfOk++;
@@ -108,7 +109,16 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
   for (const t of trades.values()) {
     if (refs.has(t.ref)) { skipped++; continue; }
     if (manual.has(fp(t))) { maybeDup++; continue; }
-    toWrite.push({ sym: t.sym, type: t.type, date: t.date, qty: t.qty, price: t.price, fee: t.fee, cur: 'USD', ref: t.ref, t: Number(t.ref.replace(/\D/g, '')) || 1, src: 'gmail' });
+    toWrite.push({ sym: t.sym, type: t.type, date: t.date, qty: t.qty, price: t.price, fee: t.fee, cur: 'USD', ref: t.ref, t: /-OPT$/.test(t.ref) ? 9e15 : (Number(t.ref.replace(/\D/g, '')) || 1), src: 'gmail', ...(t.note ? { note: t.note } : {}) });
+  }
+  // ออปชันที่เลยวันหมดอายุแล้วแต่ยังค้าง (ไม่มีรายการใช้สิทธิ/หมดอายุ) → ปิดที่ 0 ในวันหมดอายุ
+  const today = new Date().toISOString().slice(0, 10);
+  const optNet = {};
+  for (const x of [...existing, ...toWrite]) { if (!parseOcc(x.sym) || x.type === 'split') continue; optNet[x.sym] = (optNet[x.sym] || 0) + (x.type === 'sell' ? -x.qty : x.qty); }
+  let expired = 0;
+  for (const [sym, q] of Object.entries(optNet)) {
+    const o = parseOcc(sym), ref = `EXPIRE-${sym}`;
+    if (q > 1e-9 && o.exp < today && !refs.has(ref)) { toWrite.push({ sym, type: 'sell', date: o.exp, qty: q, price: 0, fee: 0, cur: 'USD', ref, t: 9e15, src: 'auto-expire', note: 'ออปชันหมดอายุ' }); expired++; }
   }
   const syms = new Set([...existing, ...toWrite].filter(x => x.type !== 'split').map(x => x.sym));
   for (const s of splits) {
@@ -126,7 +136,7 @@ if (!env.FIREBASE_SERVICE_ACCOUNT) {
     }
   }
   written = toWrite.length;
-  say(`${DRY ? '🧪 ทดลองรัน (ยังไม่บันทึก)' : '💾 บันทึกแล้ว'}: รายการใหม่ ${written - splitAdd} · แตกพาร์ ${splitAdd} · มีอยู่แล้ว ${skipped} · ข้ามเพราะอาจซ้ำกับที่กรอกเอง ${maybeDup}`);
+  say(`${DRY ? '🧪 ทดลองรัน (ยังไม่บันทึก)' : '💾 บันทึกแล้ว'}: รายการใหม่ ${written - splitAdd - expired} · แตกพาร์ ${splitAdd} · ปิดออปชันที่หมดอายุ ${expired} · มีอยู่แล้ว ${skipped} · ข้ามเพราะอาจซ้ำกับที่กรอกเอง ${maybeDup}`);
 }
 if (DEBUG) say(`🔤 รหัสประเภทรายการที่เจอ: ${[...typeCodes].map(([k, v]) => `${k}×${v}`).join(', ')}`);
 if (failed.length) { say(`\n⚠️ อ่านไม่ได้ ${failed.length} ไฟล์:`); failed.forEach(f => say(`- ${f}`)); }

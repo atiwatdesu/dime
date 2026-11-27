@@ -30,7 +30,8 @@ for (const [k, list] of Object.entries(byKey)) {
   }
   net[k] = q;
 }
-const syms = [...new Set(Object.entries(net).filter(([, q]) => q > 1e-6).map(([k]) => k.split('|')[1]))].sort();
+const isOption = s => /\d{6}[CP]\d{8}$/.test(s); // ออปชัน: Finnhub ไม่มีราคา ข้าม
+const syms = [...new Set(Object.entries(net).filter(([, q]) => q > 1e-6).map(([k]) => k.split('|')[1]).filter(s => !isOption(s)))].sort();
 console.log(`Holdings: ${syms.length} symbol(s)`); // repo เป็น public: ไม่พิมพ์ชื่อหุ้นหรือราคาใน log
 
 // 2) ราคาจาก Finnhub (free tier 60 ครั้ง/นาที → เว้น 1.1 วินาทีต่อครั้ง)
