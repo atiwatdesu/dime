@@ -77,7 +77,8 @@ input,select{font:inherit;font-size:16px;width:100%;min-height:44px;padding:0 12
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
 <input type="file" id="pdfIn" accept="application/pdf" hidden><input type="file" id="jsonIn" accept="application/json,.json" hidden>
 <script type="module">
-import {firebaseConfig} from './config.js';
+import * as cfg from './config.js';
+const {firebaseConfig}=cfg;
 import {ymd,parseDime,linesFromPages,symLabel,parseOcc} from './dime-parser.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
@@ -147,15 +148,30 @@ function render(){
 }
 /* กดชื่อหุ้น → หน้าข่าวบน Yahoo Finance (ออปชันใช้หุ้นอ้างอิง, BRK.B → BRK-B) */
 const newsUrl=s=>'https://finance.yahoo.com/quote/'+encodeURIComponent((parseOcc(s)?.root||s).replace(/\./g,'-'))+'/news/';
+/* ข่าวล่าสุดจากหลายแหล่งผ่าน news worker (Cloudflare) */
+const ago=t=>{const m=Math.round((Date.now()-t)/6e4);return !t?'':m<60?`${Math.max(m,1)} นาทีที่แล้ว`:m<1440?`${Math.round(m/60)} ชม.ที่แล้ว`:`${Math.round(m/1440)} วันที่แล้ว`};
+async function newsModal(sym){
+  const root=parseOcc(sym)?.root||sym,y=newsUrl(sym);
+  show(`<h3>ข่าวล่าสุด ${esc(root)}</h3><p class="note" id="nst">กำลังรวบรวมข่าวจากหลายแหล่ง…</p><div id="nl"></div><div class="mf"><a class="btn ghost" href="${y}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none">เปิดใน Yahoo Finance ↗</a><button class="pri" id="n0">ปิด</button></div>`,true);
+  $('#n0').onclick=hide;
+  try{
+    const r=await fetch(`${cfg.newsApi}?symbol=${encodeURIComponent(root)}`);
+    if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json();if(!$('#nl'))return;
+    const ok=Object.entries(j.sources||{}).filter(([,v])=>v==='ok').map(([k])=>k),bad=Object.entries(j.sources||{}).filter(([,v])=>v!=='ok').map(([k])=>k);
+    $('#nst').textContent=`${(j.items||[]).length} ข่าว จาก ${ok.join(', ')||'—'}${bad.length?` · ดึงไม่ได้: ${bad.join(', ')}`:''} · อัปเดต ${fdt(j.fetchedAt)}`;
+    $('#nl').innerHTML=(j.items||[]).length?(j.items||[]).filter(n=>/^https:\/\//.test(n.url)).map(n=>`<div style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:500;text-decoration:none">${esc(n.title)}</a><div class="note" style="margin:4px 0 0">${esc(n.publisher||'')}${n.publisher?' · ':''}${esc(n.source)} · ${ago(n.time)}</div></div>`).join(''):'<p>ไม่พบข่าวในช่วง 7 วันที่ผ่านมา</p>';
+  }catch(e){if($('#nst'))$('#nst').textContent='ดึงข่าวไม่สำเร็จ ลองใหม่อีกครั้ง หรือเปิดใน Yahoo Finance'}
+}
 function slip(r,ann,isHeld){
   const s=esc(r.sym),o=open.has(r.sym);
-  const head=isHeld?`<div class="row"><div><a class="sym" href="${newsUrl(r.sym)}" target="_blank" rel="noopener" title="ข่าวล่าสุดของ ${esc(symLabel(r.sym))} บน Yahoo Finance">${esc(symLabel(r.sym))} <span aria-hidden="true" style="font-size:13px;font-weight:500;opacity:.55">ข่าว ↗</span></a><small>${qf(r.qty)} ${/\d{6}[CP]\d{8}$/.test(r.sym)?'สัญญา':'หุ้น'}</small></div>
+  const head=isHeld?`<div class="row"><div><a class="sym" data-s="${s}" href="${newsUrl(r.sym)}" target="_blank" rel="noopener" title="ข่าวล่าสุดของ ${esc(symLabel(r.sym))}">${esc(symLabel(r.sym))} <span aria-hidden="true" style="font-size:13px;font-weight:500;opacity:.55">ข่าว ↗</span></a><small>${qf(r.qty)} ${/\d{6}[CP]\d{8}$/.test(r.sym)?'สัญญา':'หุ้น'}</small></div>
   <div><small>ต้นทุนเฉลี่ย</small><span class="n">${usd(r.avg,r.avg<10?4:2)}</span></div>
   <div><small>ราคาปัจจุบัน <button class="lnk" data-a="px" data-s="${s}">แก้</button></small><span class="n">${usd(r.px)}</span></div>
   <div><small>มูลค่า</small><span class="n">${usd(r.val)}</span></div>
   <div class="pl ${cls(r.pl)}"><small>กำไร/ขาดทุน</small><span class="n">${pct(r.plp)}</span><small class="${cls(r.pl)}">${sgn(r.pl)}</small></div>
   <div class="acts"><button class="ghost" data-a="det" data-s="${s}">${o?'ซ่อน ▴':'รายละเอียด ▾'}</button><button class="pri" data-a="avg" data-s="${s}">ถัว</button></div></div>`
-  :`<div class="row"><div><a class="sym" href="${newsUrl(r.sym)}" target="_blank" rel="noopener" title="ข่าวล่าสุดของ ${esc(symLabel(r.sym))} บน Yahoo Finance">${esc(symLabel(r.sym))} <span aria-hidden="true" style="font-size:13px;font-weight:500;opacity:.55">ข่าว ↗</span></a><small>ขายหมดแล้ว</small></div><div></div><div></div><div></div><div class="pl ${cls(r.realized)}"><small>กำไรที่ขายแล้ว</small><span class="n">${sgn(r.realized)}</span></div><div class="acts"><button class="ghost" data-a="det" data-s="${s}">${o?'ซ่อน ▴':'ประวัติ ▾'}</button></div></div>`;
+  :`<div class="row"><div><a class="sym" data-s="${s}" href="${newsUrl(r.sym)}" target="_blank" rel="noopener" title="ข่าวล่าสุดของ ${esc(symLabel(r.sym))}">${esc(symLabel(r.sym))} <span aria-hidden="true" style="font-size:13px;font-weight:500;opacity:.55">ข่าว ↗</span></a><small>ขายหมดแล้ว</small></div><div></div><div></div><div></div><div class="pl ${cls(r.realized)}"><small>กำไรที่ขายแล้ว</small><span class="n">${sgn(r.realized)}</span></div><div class="acts"><button class="ghost" data-a="det" data-s="${s}">${o?'ซ่อน ▴':'ประวัติ ▾'}</button></div></div>`;
   const det=o?`<div class="det"><div class="scroll"><table class="stack"><thead><tr><th>วันที่</th><th>ประเภท</th><th class="r">จำนวน</th><th class="r">ราคา</th><th class="r">ค่าธรรมเนียม</th><th class="r">ยอดเงิน</th><th class="r">${settings.method==='fifo'?'ล็อตคงเหลือ / กำไรที่ขาย':'กำไรที่ขาย'}</th><th></th></tr></thead><tbody>
   ${[...r.tx].reverse().map(x=>{if(x.type==='split')return`<tr><td>${esc(x.date)}</td><td><span class="tag s">แตกพาร์</span></td><td class="r n" colspan="5">${qf(+x.from)} หุ้น → ${qf(+x.to)} หุ้น</td><td class="r n"></td><td class="r"><button class="lnk" data-a="edit" data-id="${esc(x.id)}">แก้</button></td></tr>`;const a=ann[x.id]||{},b=x.type==='buy',amt=b?x.qty*x.price+(+x.fee||0):x.qty*x.price-(+x.fee||0);
   const info=b?(a.pooled?'':`${qf(a.remain)} / ${qf(a.q0)}`):`<span class="${cls(a.realized)}">${sgn(a.realized)}</span>${a.over?' <span class="err">ขายเกินจำนวนที่มี</span>':''}`;
@@ -379,6 +395,7 @@ function mergePrices(){
 }
 
 document.addEventListener('click',e=>{
+  const sa=e.target.closest('a.sym');if(sa&&cfg.newsApi){e.preventDefault();newsModal(sa.dataset.s);return}
   const b=e.target.closest('[data-a]');if(!b||md.contains(b))return;const s=b.dataset.s,a=b.dataset.a;
   if(a==='det'){open.has(s)?open.delete(s):open.add(s);render()}
   else if(a==='avg')avgModal(s);else if(a==='px')pxModal(s);else if(a==='add')txForm({},s?{sym:s}:{});

@@ -7,3 +7,6 @@ export const firebaseConfig = {
   messagingSenderId: "913601887333",
   appId: "1:913601887333:web:ab552d30fec267f0505a8c"
 };
+
+// URL ของ news worker บน Cloudflare (ได้หลัง deploy เช่น https://dime-news.<ชื่อ>.workers.dev) ว่างไว้ = กดชื่อหุ้นแล้วเปิด Yahoo Finance
+export const newsApi = '';

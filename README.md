@@ -52,6 +52,13 @@ workflow **Import Dime trades from Gmail** อ่านอีเมล `[Dime!] 
 - รันครั้งแรกแบบ dry run (ค่าเริ่มต้น) ดูสรุปก่อน แล้วค่อยรันจริงโดยเอาติ๊ก dry run ออก
 - log ไม่แสดงชื่อหุ้น ราคา หรือข้อมูลส่วนตัว เพราะ repo เป็น public
 
+## ข่าวหุ้น (Cloudflare Worker)
+กดชื่อหุ้นในแอพ → ดึงข่าว 7 วันล่าสุดจาก Finnhub, Google News (อังกฤษ/ไทย), Yahoo Finance และ Reddit ตอนนั้นเลย (cache 5 นาที)
+1. สมัคร Cloudflare (ฟรี) → **Workers & Pages** เปิดหนึ่งครั้งเพื่อตั้งชื่อ subdomain `*.workers.dev`
+2. **My Profile → API Tokens → Create Token → แม่แบบ "Edit Cloudflare Workers"** → ได้ token
+3. GitHub Secrets: `CLOUDFLARE_API_TOKEN` และ `CLOUDFLARE_ACCOUNT_ID` (ดูได้ที่หน้า Workers & Pages ด้านขวา)
+4. Actions → **Deploy news worker** → Run workflow → คัดลอก URL ที่ได้ไปใส่ `newsApi` ใน `site/config.js`
+
 ## ข้อควรรู้
 - ราคาเป็นราคาปิดล่าสุด ไม่ใช่เรียลไทม์
 - GitHub จะปิด workflow แบบตั้งเวลาเองอัตโนมัติ ถ้า repo public ไม่มีความเคลื่อนไหวนาน 60 วัน ถ้าราคาหยุดอัปเดต ให้เข้าไปเปิดใหม่ในแท็บ Actions

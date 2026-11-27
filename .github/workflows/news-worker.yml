@@ -1,0 +1,24 @@
+name: Deploy news worker (Cloudflare)
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/news-worker.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          secrets: |
+            FINNHUB_KEY
+        env:
+          FINNHUB_KEY: ${{ secrets.FINNHUB_KEY }}
+      - run: echo "Worker URL → ${{ steps.wrangler.outputs.deployment-url }}"
