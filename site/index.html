@@ -159,8 +159,22 @@ async function newsModal(sym){
     if(!r.ok)throw new Error('http '+r.status);
     const j=await r.json();if(!$('#nl'))return;
     const ok=Object.entries(j.sources||{}).filter(([,v])=>v==='ok').map(([k])=>k),bad=Object.entries(j.sources||{}).filter(([,v])=>v!=='ok').map(([k])=>k);
-    $('#nst').textContent=`${(j.items||[]).length} ข่าว จาก ${ok.join(', ')||'—'}${bad.length?` · ดึงไม่ได้: ${bad.join(', ')}`:''} · อัปเดต ${fdt(j.fetchedAt)}`;
-    $('#nl').innerHTML=(j.items||[]).length?(j.items||[]).filter(n=>/^https:\/\//.test(n.url)).map(n=>`<div style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:500;text-decoration:none">${esc(n.title)}</a><div class="note" style="margin:4px 0 0">${esc(n.publisher||'')}${n.publisher?' · ':''}${esc(n.source)} · ${ago(n.time)}</div></div>`).join(''):'<p>ไม่พบข่าวในช่วง 7 วันที่ผ่านมา</p>';
+    const items=(j.items||[]).filter(n=>/^https:\/\//.test(n.url)),sm=j.summary;
+    const aiNote=j.ai==='ok'?'จัดระดับโดย AI':j.ai==='quota'?'โควตา AI วันนี้หมด ใช้การจัดระดับจากคำสำคัญ':'จัดระดับจากคำสำคัญ';
+    $('#nst').textContent=`${items.length} ข่าว จาก ${ok.join(', ')||'—'}${bad.length?` · ดึงไม่ได้: ${bad.join(', ')}`:''} · ${aiNote} · อัปเดต ${fdt(j.fetchedAt)}`;
+    const IMP=n=>n>=4?['🔴','สำคัญมาก']:n===3?['🟡','สำคัญปานกลาง']:['⚪','ทั่วไป'],DIR={pos:['🟢','บวก'],neg:['🔻','ลบ'],neu:['➖','กลาง']};
+    let mode='imp',onlyHigh=false;
+    const draw=()=>{
+      const list=items.filter(n=>!onlyHigh||n.imp>=4).sort((a,b)=>mode==='imp'?(b.imp-a.imp)||(b.time-a.time):(b.time-a.time));
+      $('#nl').innerHTML=(sm?`<div class="res" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:0"><div class="hero" style="grid-column:1/-1"><span>แนวโน้มข่าว 7 วัน</span><b>${esc(sm.label)}</b></div><div><span>🟢 บวก</span><b>${+sm.pos||0}</b></div><div><span>🔻 ลบ</span><b>${+sm.neg||0}</b></div><div><span>➖ กลาง</span><b>${+sm.neu||0}</b></div><div><span>🔴 สำคัญมาก</span><b>${items.filter(n=>n.imp>=4).length}</b></div></div>`:'')
+      +`<div class="acts" style="margin:4px 0 6px"><div class="seg" id="nsort" style="flex:1 1 220px"><button type="button" data-m="imp" class="${mode==='imp'?'on':''}">สำคัญก่อน</button><button type="button" data-m="time" class="${mode==='time'?'on':''}">ล่าสุดก่อน</button></div><button type="button" class="${onlyHigh?'pri':'ghost'}" id="nhigh">🔴 เฉพาะสำคัญมาก</button></div>`
+      +(list.length?list.map(n=>{const [ii,it]=IMP(+n.imp||2),[di,dt]=DIR[n.dir]||DIR.neu,th=n.th&&n.th!==n.title?n.th:'';
+        return`<div style="padding:12px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px"><div title="${it} · ${dt}" style="font-size:15px;line-height:1.4;white-space:nowrap">${ii}${di}</div><div><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:500;text-decoration:none">${esc(th||n.title)}</a>${th?`<div class="note" style="margin:2px 0 0">${esc(n.title)}</div>`:''}<div class="note" style="margin:4px 0 0">${esc(n.publisher||'')}${n.publisher?' · ':''}${esc(n.source)} · ${ago(n.time)}</div></div></div>`}).join(''):'<p>ไม่พบข่าวในเงื่อนไขนี้</p>')
+      +'<p class="note">แนวโน้มคืออารมณ์ของข่าว ไม่ใช่การทำนายราคา</p>';
+      $('#nsort').onclick=ev=>{const b=ev.target.closest('button');if(b){mode=b.dataset.m;draw()}};
+      $('#nhigh').onclick=()=>{onlyHigh=!onlyHigh;draw()};
+    };
+    if(!$('#nl'))return;draw();
   }catch(e){if($('#nst'))$('#nst').textContent='ดึงข่าวไม่สำเร็จ ลองใหม่อีกครั้ง หรือเปิดใน Yahoo Finance'}
 }
 function slip(r,ann,isHeld){

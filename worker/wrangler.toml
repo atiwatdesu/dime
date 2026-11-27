@@ -2,3 +2,6 @@ name = "dime-news"
 main = "news.js"
 compatibility_date = "2025-11-01"
 workers_dev = true
+
+[ai]
+binding = "AI"

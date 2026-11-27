@@ -47,9 +47,10 @@ export default {
       const k = it.title.toLowerCase().replace(/[^a-z0-9฀-๿]+/g, '').slice(0, 60);
       if (seen.has(k)) continue;
       seen.add(k); items.push(it);
-      if (items.length >= 40) break;
+      if (items.length >= 30) break;
     }
-    const body = JSON.stringify({ symbol: sym, fetchedAt: Date.now(), items, sources });
+    const aiStatus = await enrich(items, sym, env, ctx);
+    const body = JSON.stringify({ symbol: sym, fetchedAt: Date.now(), items, sources, ai: aiStatus, summary: summarize(items) });
     ctx.waitUntil(cache.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${CACHE_SECONDS}` } })));
     return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
   },
@@ -108,4 +109,67 @@ export function parseRss(xml) {
 function decode(s) {
   return s.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
     .replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+// ---------- ระดับความสำคัญ / แนวโน้ม ----------
+// imp: 1–5 (4–5 = สูง, 3 = กลาง, 1–2 = ทั่วไป) · dir: pos | neg | neu · th: หัวข้อภาษาไทย · by: ai | kw
+const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const HIGH = /earnings|results|revenue|guidance|outlook|forecast|offering|dilut|reverse split|stock split|split|fda|approv|merger|acqui|buyout|takeover|lawsuit|sue[sd]?\b|probe|investigation|sec\b|delist|bankrupt|chapter 11|default|recall|งบ|ผลประกอบการ|เพิ่มทุน|ควบรวม|ซื้อกิจการ|ฟ้อง|ล้มละลาย|ถอดถอน/i;
+const MID = /upgrade|downgrade|price target|target price|rating|initiat|contract|deal|partnership|order|award|insider|ceo|cfo|resign|appoint|buyback|dividend|layoff|guid|ราคาเป้าหมาย|ปรับเพิ่ม|ปรับลด|สัญญา|ปันผล|ผู้บริหาร/i;
+const POS = /beat|beats|surge|soar|jump|rall(y|ies)|gain|rise|rises|record|upgrade|raise[sd]?|strong|approv|win|wins|award|outperform|bullish|breakthrough|profit|พุ่ง|ขึ้น|กำไร|บวก|ทะยาน|นิวไฮ/i;
+const NEG = /miss|misses|plunge|tumble|fall|falls|drop|slump|sink|downgrade|cut[s]?\b|weak|lawsuit|probe|offering|dilut|delist|bankrupt|loss|losses|warn|bearish|recall|halt|ร่วง|ลง|ขาดทุน|ลบ|ดิ่ง|ฟ้อง/i;
+
+function keywordTag(title) {
+  const imp = HIGH.test(title) ? 4 : MID.test(title) ? 3 : 2;
+  const p = POS.test(title), n = NEG.test(title);
+  return { imp, dir: p && !n ? 'pos' : n && !p ? 'neg' : 'neu' };
+}
+
+const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+const isThai = s => /[฀-๿]/.test(s);
+
+async function enrich(items, sym, env, ctx) {
+  // ผล AI ของแต่ละหัวข้อเก็บไว้ 7 วัน: หัวข้อเดิมไม่ถูกส่งให้ AI ซ้ำ (ประหยัดโควตา)
+  const cache = caches.default, keyOf = it => new Request(`https://news-cache.internal/ai/v1/${sym}/${hash(it.title)}`);
+  const todo = [];
+  await Promise.all(items.map(async it => {
+    const kw = keywordTag(it.title);
+    Object.assign(it, kw, { th: isThai(it.title) ? it.title : '', by: 'kw' });
+    const hit = await cache.match(keyOf(it));
+    if (hit) { try { Object.assign(it, await hit.json(), { by: 'ai' }); } catch {} } else todo.push(it);
+  }));
+  if (!todo.length) return 'ok';
+  if (!env.AI) return 'off';
+  try {
+    const list = todo.map((it, i) => `${i}. ${it.title}`).join('\n');
+    const res = await withTimeout(env.AI.run(AI_MODEL, {
+      messages: [
+        { role: 'system', content: `You rate news headlines for a retail investor holding the US stock ${sym}. For each numbered headline return: imp = importance to ${sym} shareholders 1-5 (5 = earnings, guidance, offering/dilution, splits, M&A, FDA, lawsuits, delisting; 3 = analyst rating/price target, contracts, insider trades; 1 = generic market chatter or barely about ${sym}); dir = expected effect on ${sym} for shareholders: "pos", "neg" or "neu"; th = natural Thai translation of the headline (keep tickers and company names in English). Reply with ONLY a JSON array like [{"i":0,"imp":4,"dir":"pos","th":"..."}].` },
+        { role: 'user', content: list },
+      ],
+      max_tokens: 2500,
+      temperature: 0.1,
+    }), 20000);
+    const text = typeof res?.response === 'string' ? res.response : JSON.stringify(res?.response ?? '');
+    const arr = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
+    let n = 0;
+    for (const r of Array.isArray(arr) ? arr : []) {
+      const it = todo[+r.i]; if (!it) continue;
+      const imp = Math.min(5, Math.max(1, Math.round(+r.imp || 0))), dir = ['pos', 'neg', 'neu'].includes(r.dir) ? r.dir : null;
+      if (!imp || !dir) continue;
+      const tag = { imp, dir, th: String(r.th || it.th || '').slice(0, 300) };
+      Object.assign(it, tag, { by: 'ai' }); n++;
+      ctx.waitUntil(cache.put(keyOf(it), new Response(JSON.stringify(tag), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=604800' } })));
+    }
+    return n ? 'ok' : 'fallback';
+  } catch (e) {
+    return /4006|quota|neurons|limit|429/i.test(String(e?.message || e)) ? 'quota' : 'fallback';
+  }
+}
+
+function summarize(items) {
+  const c = { pos: 0, neg: 0, neu: 0 }; let w = 0, sc = 0;
+  for (const it of items) { c[it.dir] = (c[it.dir] || 0) + 1; w += it.imp; sc += (it.dir === 'pos' ? 1 : it.dir === 'neg' ? -1 : 0) * it.imp; }
+  const r = w ? sc / w : 0;
+  return { ...c, score: +r.toFixed(2), label: r > 0.35 ? 'บวก' : r > 0.12 ? 'ค่อนข้างบวก' : r < -0.35 ? 'ลบ' : r < -0.12 ? 'ค่อนข้างลบ' : 'กลาง/ผสม' };
 }
