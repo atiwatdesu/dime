@@ -140,7 +140,7 @@ function render(){
   const lifeThb=val*fx+gotThb-paidThb;
   $('#stamp').textContent=!ready?'กำลังโหลดข้อมูล…':(prices.at?'ราคาอัปเดต '+fdt(prices.at):'ยังไม่มีการอัปเดตราคา')+(settings.method==='avg'?' · คิดแบบต้นทุนเฉลี่ย':' · คิดแบบ FIFO');
   $('#tot').innerHTML=`<div style="font-size:14px;opacity:.8">มูลค่าพอร์ตรวม</div><div class="big">${usd(val)}</div>
-  <div class="n" style="font-size:20px;margin-top:6px">${isFinite(fx)?thb(val*fx)+` <span style="font-size:13px;opacity:.75">ที่ ${fx.toFixed(2)} บาท/USD · ${prices.fx?.src==='manual'?'กรอกเอง':'เรต'} ${esc(prices.fx?.rateDate||fdt(prices.fx?.at))}</span>`:'<span style="font-size:14px;opacity:.75">ยังไม่มีเรต USD/THB</span>'}</div>
+  <div class="n" style="font-size:20px;margin-top:6px">${isFinite(fx)?thb(val*fx)+` <span style="font-size:13px;opacity:.75">ที่ ${fx.toFixed(2)} บาท/USD · ${prices.fx?.src==='manual'?'กรอกเอง '+fdt(prices.fx.at):prices.fx?.src==='market'?'เรตตลาด '+fdt(prices.fx.quoteTime||prices.fx.at):'เรตอ้างอิง '+esc(prices.fx?.rateDate||fdt(prices.fx?.at))}</span>`:'<span style="font-size:14px;opacity:.75">ยังไม่มีเรต USD/THB</span>'}</div>
   ${isFinite(lifeThb)&&txns.length?`<div style="margin-top:20px"><div style="font-size:14px;opacity:.8">กำไร/ขาดทุนทั้งหมดตั้งแต่เริ่ม (บาท)</div><div class="big" style="font-size:clamp(30px,5vw,44px)">${(lifeThb>0?'+':lifeThb<0?'−':'')+'฿'+Math.round(Math.abs(lifeThb)).toLocaleString('en-US')}</div><div style="font-size:13px;opacity:.75">มูลค่าพอร์ต ${thb(val*fx)} + ได้จากการขาย ${thb(gotThb)} − จ่ายซื้อ ${thb(paidThb)}${estN?` · ${estN} รายการไม่มียอดบาท ใช้เรตประมาณ`:''}</div></div>`:''}
   <div class="kv"><div><span>กำไร/ขาดทุน (ยังถือ)</span><b class="n">${sgn(un)} · ${pct(cost?un/cost:NaN)}</b></div><div><span>ต้นทุนรวม</span><b class="n">${usd(cost)}</b></div><div><span>กำไรที่ขายแล้ว</span><b class="n">${sgn(rz)}</b></div></div>
   ${missing?`<p class="note" style="color:inherit">${missing} ตัวยังไม่มีราคา จึงนับที่ราคาทุนไปก่อน</p>`:''}`;
@@ -375,7 +375,9 @@ const newer=(a,b)=>!a?b:!b?a:(a.at||'')>=(b.at||'')?a:b;
 function mergePrices(){
   const p={};for(const s of new Set([...Object.keys(autoP),...Object.keys(ovr.p||{})]))p[s]=newer(autoP[s],ovr.p?.[s]);
   const ats=Object.values(autoP).map(x=>x.at||'').sort();
-  prices={p,fx:newer(newer(autoFx,liveFx),ovr.fx),at:ats[ats.length-1]||''};
+  // เรตตลาดจาก GitHub (อายุไม่เกิน 3 ชม.) มาก่อน ไม่งั้นใช้ค่าที่ใหม่กว่าระหว่างเรตเก็บไว้กับเรตอ้างอิงที่ดึงสด · ที่กรอกเองใช้ถ้าใหม่กว่า
+  const fxA=autoFx?.src==='market'&&Date.now()-Date.parse(autoFx.at)<3*3600e3?autoFx:newer(autoFx,liveFx);
+  prices={p,fx:newer(fxA,ovr.fx),at:ats[ats.length-1]||''};
 }
 
 document.addEventListener('click',e=>{
@@ -406,7 +408,7 @@ onAuthStateChanged(auth,u=>{
   const fail=err=>{ready=true;render();$('#stamp').textContent=errMsg(err)};
   unsubs.push(onSnapshot(txCol(),s=>{txns=s.docs.map(d=>({...d.data(),id:d.id})).filter(x=>x.sym&&(+x.qty>0||(x.type==='split'&&+x.ratio>0)));ready=true;render()},fail));
   unsubs.push(onSnapshot(collection(fs,'prices'),s=>{autoP={};s.docs.forEach(d=>{const v=d.data();if(isFinite(+v.v))autoP[d.id]={...v,src:'auto'}});mergePrices();render()},fail));
-  unsubs.push(onSnapshot(doc(fs,'fx/USDTHB'),s=>{autoFx=s.exists()?{...s.data(),src:'auto'}:null;mergePrices();render()},fail));
+  unsubs.push(onSnapshot(doc(fs,'fx/USDTHB'),s=>{autoFx=s.exists()?{src:'auto',...s.data()}:null;mergePrices();render()},fail));
   unsubs.push(onSnapshot(doc(fs,`users/${uid}/meta/overrides`),s=>{ovr=s.exists()?{p:{},...s.data()}:{p:{},fx:null};mergePrices();render()},fail));
   unsubs.push(onSnapshot(doc(fs,`users/${uid}/meta/settings`),s=>{if(s.exists())settings={method:'fifo',...s.data()};render()},fail));
 });

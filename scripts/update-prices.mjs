@@ -48,14 +48,23 @@ for (const sym of syms) {
   await sleep(1100);
 }
 
-// 3) เรต USD/THB จาก Frankfurter (ไม่ต้องใช้ key)
+// 3) เรต USD/THB: เรตตลาดจาก Yahoo Finance (THB=X) ก่อน ถ้าไม่ได้ใช้เรตอ้างอิงธนาคารกลางจาก Frankfurter
+let fxDone = false;
 try {
+  const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/THB=X?range=1d&interval=5m', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const j = await r.json();
+  const m = j?.chart?.result?.[0]?.meta, v = +m?.regularMarketPrice;
+  if (!(v > 20 && v < 60)) throw new Error('no market rate');
+  await db.doc('fx/USDTHB').set({ v, quoteTime: m.regularMarketTime ? new Date(m.regularMarketTime * 1000).toISOString() : null, at: now, src: 'market' });
+  console.log('USDTHB updated (market)'); fxDone = true;
+} catch (e) { console.warn('Market FX failed:', e.message); }
+if (!fxDone) try {
   const r = await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=THB');
   const j = await r.json();
   const v = j?.rates?.THB;
   if (!(v > 0)) throw new Error('no rate');
   await db.doc('fx/USDTHB').set({ v, rateDate: j.date || null, at: now, src: 'auto' });
-  console.log('USDTHB updated');
+  console.log('USDTHB updated (reference)');
 } catch (e) { failed.push('USDTHB'); console.warn('FAILED USDTHB', e.message); }
 
 if (failed.length) { console.error(`Could not update ${failed.length} item(s)`); process.exitCode = failed.length > syms.length / 2 ? 1 : 0; }
