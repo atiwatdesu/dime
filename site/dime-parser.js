@@ -46,12 +46,15 @@ export function parseDime(lines){
   const dmy=s=>{const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?ymd(+m[3],+m[2],+m[1]):''};
   const eff=full.match(/Effective\s*Date\s*(?:\S+\s*){0,6}?(\d{1,2}\/\d{1,2}\/\d{4})/i);
   const N='(\\d[\\d,]*(?:\\.\\d+)?)';
+  // เรต THB/USD ของใบยืนยันฉบับนี้ (ยอดบาททุกแถว = ยอด USD × เรตนี้)
+  const fxm=full.match(/(?:THB\s*\/\s*USD|USD\s*\/\s*THB|Exchange\s*Rate|อัตราแลกเปลี่ยน)[^\d]{0,60}?(\d{2}\.\d{2,6})/i),docFx=fxm&&+fxm[1]>20&&+fxm[1]<60?+fxm[1]:null;
   const re=new RegExp(`(\\d{4,})\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(BUY|SELL|SEL|REW|EXC|EXP)\\s+([A-Z][A-Z.\\-]{0,9}?)(\\d{6}[CP]\\d{8})?\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+USD\\s+${N}\\s+${N}\\s+${N}\\s+${N}(?:\\s*(?:\\[[A-Z]+\\]\\s*)?${N}\\s+${N}\\s+${N}\\s+${N})?`,'g');
   const out=[],seen=new Set();let m;
   while((m=re.exec(full))){
     const [,id,settle,tp,base,occ]=m,[q,up,gross,fee,,total]=m.slice(6,12).map(x=>+x.replace(/,/g,''));
     // ยอดบาทตามใบยืนยัน (บรรทัด THB): ใช้เมื่อเรตที่ได้อยู่ในช่วงสมเหตุสมผล
-    const thbTotal=m[15]?+m[15].replace(/,/g,''):NaN,rate=thbTotal/total,thb=total>0&&rate>20&&rate<60?+thbTotal.toFixed(2):null;
+    const thbTotal=m[15]?+m[15].replace(/,/g,''):NaN,rate=thbTotal/total;
+    const thb=total>0&&rate>20&&rate<60&&(!docFx||Math.abs(rate-docFx)<.05)?+thbTotal.toFixed(2):docFx&&total>=0?+(total*docFx).toFixed(2):null;
     if(seen.has(id)||!(q>0))continue;seen.add(id);
     const date=(eff&&dmy(eff[1]))||dmy(settle),ref='DIME-'+id,opt=occ?parseOcc(base+occ):null,sym=opt?base+occ:base;
     if(tp==='EXC'||tp==='EXP'){

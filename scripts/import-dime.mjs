@@ -54,7 +54,7 @@ if (env.LOCAL_PDF_DIR) {
 
 // ---------- 2) อ่าน PDF (ตัดข้อมูลส่วนตัวก่อนอ่าน) ----------
 const trades = new Map(); const failed = [];
-let pdfOk = 0, redacted = 0, rawRescue = 0, shown = { ok: 0, bad: 0 };
+let pdfOk = 0, redacted = 0, rawRescue = 0, shown = { ok: 0, bad: 0, fx: 0 };
 // DEBUG_SHAPE: พิมพ์เฉพาะ "รูปร่าง" ของบรรทัด (ตัวเลข→N วันที่→D คำ→W ภาษาไทย→ท) ไม่มีชื่อหุ้น ตัวเลข หรือข้อมูลส่วนตัว
 const KEY = /^(BUY|SELL|REW|EXC|EXP|DIV|USD|THB|Order|History|Effective|Date|Confirmation|Note|Unit|Price|Gross|Amount|Fee|Total|ID|Settlement|Type|Transaction|Securities|Currency|Withholding|Tax|Include|Vat|CCY)$/i;
 const shape = l => l.split(' ').map(t => KEY.test(t) ? t : /^\[[A-Z]+\]$/.test(t) ? '[EX]' : /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) ? 'D' : /^[\d,]*\.?\d+$/.test(t) ? 'N' : /[\u0E00-\u0E7F]/.test(t) ? 'ท' : /\d/.test(t) ? t.replace(/[A-Za-z]/g, 'A').replace(/\d/g, '9') : 'W').join(' ').replace(/(ท )+ท/g, 'ท…');
@@ -67,6 +67,7 @@ for (const d of docs) {
     for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); pages.push({ items: (await pg.getTextContent()).items, vp: pg.getViewport({ scale: 1 }) }); }
     const lines = linesFromPages(pages); redacted += lines.dropped || 0;
     const rows = parseDime(lines);
+    if (DEBUG && !rows.some(r => r.thb != null) && shown.fx < 2) { shown.fx++; console.log(`\n== ไม่พบเรต ${d.when}: บรรทัดที่มีคำว่า rate/THB/USD/อัตรา ==`); lines.filter(l => /rate|THB|USD|อัตรา|แลกเปลี่ยน/i.test(l)).forEach(l => console.log('  ' + shape(l))); }
     for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]{2,8})\b/g)) if (!/^(BUY|SELL?|REW|EXC|EXP)$/.test(m[2])) failed.push(`${d.when}: มีรายการประเภท ${m[2]} (วันที่ ${m[1]}) ยังไม่ได้บันทึก ต้องตรวจเอง`);
     if (DEBUG) for (const m of lines.join(' ').matchAll(/\b\d{4,}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+([A-Za-z]{2,8})\b/g)) typeCodes.set(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)'), (typeCodes.get(m[1] + (rows.length ? '' : ' (ไฟล์ที่อ่านไม่ได้)')) || 0) + 1);
     if (DEBUG && (rows.length ? shown.ok < 1 : shown.bad < 3)) {
