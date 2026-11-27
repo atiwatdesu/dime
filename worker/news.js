@@ -22,7 +22,8 @@ export default {
 
     const cache = caches.default;
     const key = new Request(`https://news-cache.internal/v1/${sym}`);
-    const hit = await cache.match(key);
+    const fresh = new URL(req.url).searchParams.get('fresh') === '1';
+    const hit = fresh ? null : await cache.match(key);
     if (hit) { const body = await hit.text(); return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } }); }
 
     const jobs = {
@@ -38,7 +39,7 @@ export default {
     settled.forEach((r, i) => {
       const n = names[i];
       if (r.status === 'fulfilled') { sources[n] = 'ok'; r.value.forEach(it => all.push({ ...it, source: n })); }
-      else sources[n] = 'error';
+      else sources[n] = 'error: ' + String(r.reason?.message || r.reason).slice(0, 60);
     });
 
     // ตัดข่าวซ้ำ (หัวข้อเดียวกันจากหลายแหล่ง) แล้วเรียงใหม่สุดก่อน

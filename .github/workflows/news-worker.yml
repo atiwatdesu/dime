@@ -25,4 +25,4 @@ jobs:
       - name: Smoke test (generic symbol, counts only)
         run: |
           sleep 5
-          curl -s -H "Origin: https://atiwatdesu.github.io" "${{ steps.wrangler.outputs.deployment-url }}/?symbol=AAPL" | jq -c '{sources, ai, summary, items: (.items | length), high: ([.items[] | select(.imp >= 4)] | length), by_ai: ([.items[] | select(.by == "ai")] | length), thai: ([.items[] | select((.th // "") != "")] | length)}'
+          curl -s -H "Origin: https://atiwatdesu.github.io" "${{ steps.wrangler.outputs.deployment-url }}/?symbol=AAPL&fresh=1" | jq -c '{sources, ai, summary, items: (.items | length), high: ([.items[] | select(.imp >= 4)] | length), by_ai: ([.items[] | select(.by == "ai")] | length), thai: ([.items[] | select((.th // "") != "")] | length)}'
